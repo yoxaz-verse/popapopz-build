@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Html, OrbitControls, PerspectiveCamera, Text, RoundedBox } from "@react-three/drei";
+import { Html, OrbitControls, PerspectiveCamera, Text, RoundedBox, Edges } from "@react-three/drei";
 import { motion } from "framer-motion";
 import { Eye, Move3D, RotateCcw, ScanLine } from "lucide-react";
 import { modules } from "@/data/popapopz";
@@ -226,13 +226,15 @@ function CabinetShell({ cutaway, machineColor }: { cutaway: boolean; machineColo
 function StaticKioskDetails({ cutaway }: { cutaway: boolean }) {
   return (
     <group>
-      <SignPanel position={[0, 2.68, 1.02]} scale={[1.05, 0.42, 0.08]} text="POPAPOPZ" color="#101827" textColor="#f8fafc" />
-      <SignPanel position={[-0.98, 2.44, 1.04]} scale={[0.82, 0.28, 0.05]} text="24/7" color="#064e3b" textColor="#e0f2fe" />
-      <SignPanel position={[0.98, 2.44, 1.04]} scale={[0.82, 0.28, 0.05]} text="BUBBLE TEA" color="#064e3b" textColor="#d1fae5" fontSize={0.105} />
+      {/* Positioned signs exactly on the header front face (Z = 0.655) */}
+      <SignPanel position={[0, 2.68, 0.695]} scale={[1.05, 0.42, 0.08]} text="POPAPOPZ" color="#101827" textColor="#f8fafc" />
+      <SignPanel position={[-0.98, 2.44, 0.68]} scale={[0.82, 0.28, 0.05]} text="24/7" color="#064e3b" textColor="#e0f2fe" />
+      <SignPanel position={[0.98, 2.44, 0.68]} scale={[0.82, 0.28, 0.05]} text="BUBBLE TEA" color="#064e3b" textColor="#d1fae5" fontSize={0.105} />
       <Text position={[0, 1.48, 1.06]} fontSize={0.12} color="#fde047" anchorX="center" anchorY="middle">
         MILK TEA
       </Text>
-      <Text position={[0, -1.62, 1.1]} fontSize={0.16} color="#eff6ff" anchorX="center" anchorY="middle">
+      {/* Positioned text exactly on the footer front face (Z = 0.72) */}
+      <Text position={[0, -1.62, 0.732]} fontSize={0.16} color="#eff6ff" anchorX="center" anchorY="middle">
         ORDER HERE
       </Text>
       <GlowStrip position={[0, -1.46, 1.03]} scale={[1.08, 0.035, 0.035]} color="#a5b4fc" />
@@ -304,7 +306,7 @@ function QrGraphic() {
   ] as const;
 
   return (
-    <group position={[0.9, -1.05, 1.075]}>
+    <group position={[0.9, -1.05, 0.52]}>
       <mesh scale={[0.46, 0.32, 0.02]}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#fff7ed" emissive="#fb923c" emissiveIntensity={0.18} />
@@ -373,9 +375,11 @@ function MachineModuleBlock({ config, module }: { config: ModuleMeshConfig; modu
 
 function SelectionFrame({ scale, color }: { scale: [number, number, number]; color: string }) {
   return (
-    <RoundedBox args={scale.map(s => s * 1.05) as [number, number, number]} radius={0.015} smoothness={4}>
-      <meshBasicMaterial color={color} transparent opacity={0.25} wireframe />
-    </RoundedBox>
+    <mesh scale={[scale[0] * 1.05, scale[1] * 1.05, scale[2] * 1.05]}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshBasicMaterial color={color} transparent opacity={0.08} />
+      <Edges color={color} scale={1.0} />
+    </mesh>
   );
 }
 
@@ -782,14 +786,17 @@ function ScreenPanel({ position, scale, color }: { position: [number, number, nu
 
 function RobotArm({ active, color }: { active: boolean; color: string }) {
   const baseRef = useRef<THREE.Group>(null);
-  const forearmRef = useRef<THREE.Mesh>(null);
+  const forearmRef = useRef<THREE.Group>(null);
   
-  // Subtle micro-animation when active to represent robot arm operating
+  // Smoothly animates the robot arm joints, resetting to rest when active is false
   useFrame((state) => {
-    if (active && baseRef.current && forearmRef.current) {
+    if (baseRef.current && forearmRef.current) {
       const t = state.clock.elapsedTime;
-      baseRef.current.rotation.y = -0.42 + Math.sin(t * 1.5) * 0.18;
-      forearmRef.current.rotation.x = Math.cos(t * 1.5) * 0.12;
+      const targetBaseY = active ? -0.42 + Math.sin(t * 1.5) * 0.18 : -0.42;
+      const targetForearmX = active ? Math.cos(t * 1.5) * 0.12 : 0;
+      
+      baseRef.current.rotation.y = THREE.MathUtils.lerp(baseRef.current.rotation.y, targetBaseY, 0.1);
+      forearmRef.current.rotation.x = THREE.MathUtils.lerp(forearmRef.current.rotation.x, targetForearmX, 0.1);
     }
   });
 
@@ -819,21 +826,21 @@ function RobotArm({ active, color }: { active: boolean; color: string }) {
         <meshStandardMaterial color="#fb923c" emissive="#f97316" emissiveIntensity={active ? 0.35 : 0.08} />
       </mesh>
 
-      {/* Forearm Link (Arm Segment 2) */}
-      <group position={[0.09, 0.2, 0]} rotation={[0, 0, -Math.PI / 4]}>
-        <mesh position={[0.1, -0.1, 0]} scale={[0.03, 0.22, 0.03]} ref={forearmRef} castShadow>
+      {/* Forearm Link (Arm Segment 2) - Pivot on parent group around elbow */}
+      <group position={[0.09, 0.2, 0]} rotation={[0, 0, -Math.PI / 4]} ref={forearmRef}>
+        <mesh position={[0.1, -0.1, 0]} scale={[0.03, 0.22, 0.03]} castShadow>
           <cylinderGeometry args={[1, 1, 1, 16]} />
           <meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.2} />
         </mesh>
         
-        {/* Joint 3 (Wrist/End-Effector mount) */}
-        <mesh position={[0.18, -0.2, 0]} scale={[0.042, 0.042, 0.042]}>
+        {/* Joint 3 (Wrist/End-Effector mount) - perfectly aligned on end of segment */}
+        <mesh position={[0.2, -0.2, 0]} scale={[0.042, 0.042, 0.042]}>
           <sphereGeometry args={[1, 24, 24]} />
           <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.15} />
         </mesh>
         
-        {/* Cup grabber ring / Claw assembly */}
-        <group position={[0.18, -0.22, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        {/* Cup grabber ring / Claw assembly - aligned on end of segment */}
+        <group position={[0.2, -0.22, 0]} rotation={[Math.PI / 2, 0, 0]}>
           {/* Circular grip claw */}
           <mesh scale={[0.08, 0.02, 0.08]}>
             <cylinderGeometry args={[1, 1.05, 1, 24, 1, true]} />
