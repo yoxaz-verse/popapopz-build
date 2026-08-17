@@ -26,6 +26,13 @@ const themeColors: Record<string, { body: string; accent: string; glow: string }
   "#f43f5e": { body: "#1f0408", accent: "#f43f5e", glow: "#fb7185" }  // Rose theme (Dark Rose / Neon Rose)
 };
 
+const bodyThemes: Record<string, { main: string; back: string; pillars: string; roughness: number; metalness: number }> = {
+  "#080b10": { main: "#080b10", back: "#0b0f16", pillars: "#0f172a", roughness: 0.48, metalness: 0.25 }, // Matte Black
+  "#f8fafc": { main: "#f8fafc", back: "#e2e8f0", pillars: "#cbd5e1", roughness: 0.35, metalness: 0.1 },  // Titanium White
+  "#475569": { main: "#475569", back: "#334155", pillars: "#64748b", roughness: 0.4, metalness: 0.6 },  // Slate Silver
+  "#0f1e36": { main: "#0f1e36", back: "#0c1624", pillars: "#1e293b", roughness: 0.45, metalness: 0.3 }  // Deep Blue
+};
+
 const moduleMeshes: ModuleMeshConfig[] = [
   { id: "controller", position: [0, 1.82, 0.72], explodedPosition: [0, 2.78, 1.1], scale: [2.05, 0.52, 0.25], labelOffset: [0, 0.55, 0.08] },
   { id: "prep", position: [0.1, 0.58, 0.78], explodedPosition: [0.1, 0.72, 1.72], scale: [1.45, 1.05, 0.36], labelOffset: [0, 0.78, 0.08] },
@@ -41,9 +48,11 @@ export function MachineViewport() {
   const exploded = useStudioStore((state) => state.exploded);
   const cutaway = useStudioStore((state) => state.cutaway);
   const machineColor = useStudioStore((state) => state.machineColor);
+  const bodyColor = useStudioStore((state) => state.bodyColor);
   const toggleExploded = useStudioStore((state) => state.toggleExploded);
   const toggleCutaway = useStudioStore((state) => state.toggleCutaway);
   const setMachineColor = useStudioStore((state) => state.setMachineColor);
+  const setBodyColor = useStudioStore((state) => state.setBodyColor);
   const selectedModuleId = useStudioStore((state) => state.selectedModuleId);
   const selected = modules.find((module) => module.id === selectedModuleId) ?? modules[0];
 
@@ -55,6 +64,13 @@ export function MachineViewport() {
     { label: "Rose", hex: "#f43f5e" }
   ];
 
+  const bodyColors = [
+    { label: "Matte Black", hex: "#080b10" },
+    { label: "Titanium White", hex: "#f8fafc" },
+    { label: "Slate Silver", hex: "#475569" },
+    { label: "Deep Blue", hex: "#0f1e36" }
+  ];
+
   return (
     <section id="machine-layout" className="panel overflow-hidden rounded-lg">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 p-4">
@@ -63,8 +79,9 @@ export function MachineViewport() {
           <h2 className="mt-1 text-xl font-semibold">1850 x 850 x 800 mm POPAPOPZ Envelope</h2>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {/* Accent/Trim picker */}
           <div className="flex items-center gap-2 border-r border-border/80 pr-3">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">Chassis:</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">Trim:</span>
             <div className="flex gap-1.5">
               {colors.map((c) => (
                 <button
@@ -76,6 +93,27 @@ export function MachineViewport() {
                   }`}
                   style={{ backgroundColor: c.hex }}
                   onClick={() => setMachineColor(c.hex)}
+                  title={c.label}
+                  type="button"
+                />
+              ))}
+            </div>
+          </div>
+          
+          {/* Cabinet body picker ("the black substance") */}
+          <div className="flex items-center gap-2 border-r border-border/80 pr-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">Cabinet:</span>
+            <div className="flex gap-1.5">
+              {bodyColors.map((c) => (
+                <button
+                  key={c.hex}
+                  className={`h-5 w-5 rounded-full border transition-all ${
+                    bodyColor === c.hex
+                      ? "border-white scale-110 ring-2 ring-emerald-500/25"
+                      : "border-transparent hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: c.hex }}
+                  onClick={() => setBodyColor(c.hex)}
                   title={c.label}
                   type="button"
                 />
@@ -151,10 +189,11 @@ export function MachineViewport() {
 function MachineModel() {
   const cutaway = useStudioStore((state) => state.cutaway);
   const machineColor = useStudioStore((state) => state.machineColor);
+  const bodyColor = useStudioStore((state) => state.bodyColor);
 
   return (
     <group position={[0, -0.25, 0]} scale={0.86}>
-      <CabinetShell cutaway={cutaway} machineColor={machineColor} />
+      <CabinetShell cutaway={cutaway} machineColor={machineColor} bodyColor={bodyColor} />
       <StaticKioskDetails cutaway={cutaway} />
       {moduleMeshes.map((config) => {
         const machineModule = modules.find((item) => item.id === config.id);
@@ -164,20 +203,21 @@ function MachineModel() {
   );
 }
 
-function CabinetShell({ cutaway, machineColor }: { cutaway: boolean; machineColor: string }) {
+function CabinetShell({ cutaway, machineColor, bodyColor }: { cutaway: boolean; machineColor: string; bodyColor: string }) {
   const theme = themeColors[machineColor] ?? themeColors["#ea580c"];
+  const bTheme = bodyThemes[bodyColor] ?? bodyThemes["#080b10"];
 
   return (
     <group>
       {/* Main Back Panel */}
       <mesh position={[0, 0.18, -0.1]} castShadow receiveShadow>
         <boxGeometry args={[2.85, 3.95, 0.5]} />
-        <meshStandardMaterial color={theme.body} roughness={0.65} metalness={0.15} />
+        <meshStandardMaterial color={bTheme.back} roughness={bTheme.roughness} metalness={bTheme.metalness} />
       </mesh>
 
       {/* Main Structural Frame - Bevelled Corners using RoundedBox */}
       <RoundedBox position={[0, 0.18, 0.08]} args={[2.85, 3.95, 0.86]} radius={0.06} smoothness={4} castShadow receiveShadow>
-        <meshStandardMaterial color={theme.body} roughness={0.48} metalness={0.25} />
+        <meshStandardMaterial color={bTheme.main} roughness={bTheme.roughness} metalness={bTheme.metalness} />
       </RoundedBox>
 
       {/* Custom Chassis Accent Header */}
@@ -193,13 +233,13 @@ function CabinetShell({ cutaway, machineColor }: { cutaway: boolean; machineColo
       {/* Side Pillar Left */}
       <mesh position={[-1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color={theme.body} roughness={0.25} metalness={0.5} />
+        <meshStandardMaterial color={bTheme.pillars} roughness={bTheme.roughness} metalness={bTheme.metalness} />
       </mesh>
 
       {/* Side Pillar Right */}
       <mesh position={[1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color={theme.body} roughness={0.25} metalness={0.5} />
+        <meshStandardMaterial color={bTheme.pillars} roughness={bTheme.roughness} metalness={bTheme.metalness} />
       </mesh>
 
       <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} color={theme.accent} />
