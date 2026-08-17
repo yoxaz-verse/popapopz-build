@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 216 23% 7%;
+  --foreground: 210 30% 96%;
+  --panel: 220 20% 11%;
+  --muted: 217 13% 55%;
+  --border: 215 18% 20%;
+  --accent: 184 87% 53%;
+  --warning: 43 96% 56%;
+  --danger: 348 89% 65%;
+  --success: 158 75% 45%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(rgba(12, 18, 29, 0.88) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 18, 29, 0.88) 1px, transparent 1px),
+    hsl(var(--background));
+  background-size: 32px 32px;
+  color: hsl(var(--foreground));
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.panel {
+  border: 1px solid hsl(var(--border));
+  background: rgba(18, 25, 38, 0.82);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+}
+
+.technical-label {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 0.72rem;
+}
+
+.target-badge {
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  background: rgba(250, 204, 21, 0.12);
+  color: rgb(254, 240, 138);
+}
+
+@media (max-width: 1024px) {
+  body {
+    background-size: 24px 24px;
+  }
+}
