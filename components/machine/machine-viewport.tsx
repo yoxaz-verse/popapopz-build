@@ -1,13 +1,14 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Html, OrbitControls, PerspectiveCamera, Text } from "@react-three/drei";
+import { Suspense, useMemo, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Html, OrbitControls, PerspectiveCamera, Text, RoundedBox } from "@react-three/drei";
 import { motion } from "framer-motion";
 import { Eye, Move3D, RotateCcw, ScanLine } from "lucide-react";
 import { modules } from "@/data/popapopz";
 import { useStudioStore } from "@/store/studio-store";
 import type { MachineModule } from "@/types/engineering";
+import * as THREE from "three";
 
 interface ModuleMeshConfig {
   id: string;
@@ -68,10 +69,25 @@ export function MachineViewport() {
           <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
             <Suspense fallback={<LoadingLabel />}>
               <PerspectiveCamera makeDefault position={[0, 0.55, 7]} fov={42} />
-              <ambientLight intensity={0.8} />
-              <directionalLight castShadow position={[3, 5, 4]} intensity={1.35} />
-              <pointLight position={[-2.6, 2.4, 1.8]} intensity={1.2} color="#f97316" />
-              <pointLight position={[2.6, 1.8, 1.8]} intensity={0.9} color="#22d3ee" />
+              <ambientLight intensity={0.35} />
+              <directionalLight 
+                castShadow 
+                position={[3, 8, 5]} 
+                intensity={1.5} 
+                shadow-mapSize={[2048, 2048]} 
+                shadow-bias={-0.0001} 
+              />
+              <spotLight 
+                position={[0, 3, 2.5]} 
+                angle={0.45} 
+                penumbra={0.8} 
+                intensity={2.8} 
+                color="#34d399" 
+                castShadow 
+                shadow-bias={-0.0001} 
+              />
+              <pointLight position={[-2.6, 2.4, 1.8]} intensity={1.5} color="#ea580c" />
+              <pointLight position={[2.6, 1.8, 1.8]} intensity={1.2} color="#06b6d4" />
               <MachineModel />
               <GridFloor />
               <OrbitControls enablePan={false} minDistance={3.4} maxDistance={7.5} maxPolarAngle={Math.PI / 1.65} />
@@ -113,41 +129,66 @@ function MachineModel() {
 function CabinetShell({ cutaway }: { cutaway: boolean }) {
   return (
     <group>
-      <mesh position={[0, 0.18, 0.08]} castShadow receiveShadow>
-        <boxGeometry args={[2.85, 3.95, 0.86]} />
-        <meshStandardMaterial color="#080b10" roughness={0.48} metalness={0.18} />
+      {/* Main Back Panel */}
+      <mesh position={[0, 0.18, -0.1]} castShadow receiveShadow>
+        <boxGeometry args={[2.85, 3.95, 0.5]} />
+        <meshStandardMaterial color="#0b0f16" roughness={0.65} metalness={0.15} />
       </mesh>
-      <mesh position={[0, 2.42, 0.18]} castShadow>
-        <boxGeometry args={[2.95, 0.38, 0.95]} />
-        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.16} roughness={0.45} />
-      </mesh>
-      <mesh position={[0, -1.68, 0.22]} castShadow>
-        <boxGeometry args={[2.92, 0.28, 1.0]} />
-        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.12} roughness={0.45} />
-      </mesh>
+
+      {/* Main Structural Frame - Bevelled Corners using RoundedBox */}
+      <RoundedBox position={[0, 0.18, 0.08]} args={[2.85, 3.95, 0.86]} radius={0.06} smoothness={4} castShadow receiveShadow>
+        <meshStandardMaterial color="#080b10" roughness={0.48} metalness={0.25} />
+      </RoundedBox>
+
+      {/* Orange Accent Header */}
+      <RoundedBox position={[0, 2.42, 0.18]} args={[2.95, 0.38, 0.95]} radius={0.04} smoothness={4} castShadow>
+        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.2} roughness={0.35} metalness={0.4} />
+      </RoundedBox>
+
+      {/* Orange Accent Footer */}
+      <RoundedBox position={[0, -1.68, 0.22]} args={[2.92, 0.28, 1.0]} radius={0.04} smoothness={4} castShadow>
+        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.15} roughness={0.35} metalness={0.4} />
+      </RoundedBox>
+
+      {/* Side Pillar Left */}
       <mesh position={[-1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color="#0b0f16" roughness={0.35} metalness={0.25} />
+        <meshStandardMaterial color="#0f172a" roughness={0.25} metalness={0.5} />
       </mesh>
+
+      {/* Side Pillar Right */}
       <mesh position={[1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color="#0b0f16" roughness={0.35} metalness={0.25} />
+        <meshStandardMaterial color="#0f172a" roughness={0.25} metalness={0.5} />
       </mesh>
+
       <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} />
       <Trim position={[0, -0.58, 0.99]} scale={[2.75, 0.04, 0.05]} />
       <Trim position={[0, -1.58, 1.02]} scale={[2.75, 0.05, 0.05]} />
+
+      {/* Premium Glass Cover (Transparent / Reflective in Normal, Wireframe in Cutaway) */}
       {!cutaway ? (
         <mesh position={[0, 0.7, 1.03]} castShadow>
           <boxGeometry args={[2.38, 1.82, 0.035]} />
-          <meshPhysicalMaterial color="#d8fbff" transparent opacity={0.22} roughness={0.04} metalness={0.05} transmission={0.15} />
+          <meshPhysicalMaterial 
+            color="#d1f5ff" 
+            transparent 
+            opacity={0.18} 
+            roughness={0.05} 
+            metalness={0.1}
+            transmission={0.95}
+            ior={1.5}
+            thickness={0.05}
+            clearcoat={1.0}
+            clearcoatRoughness={0.05}
+          />
         </mesh>
-      ) : null}
-      {cutaway ? (
+      ) : (
         <mesh position={[0, 0.7, 1.04]}>
           <boxGeometry args={[2.38, 1.82, 0.025]} />
-          <meshStandardMaterial color="#67e8f9" transparent opacity={0.08} wireframe />
+          <meshStandardMaterial color="#22d3ee" transparent opacity={0.08} wireframe />
         </mesh>
-      ) : null}
+      )}
     </group>
   );
 }
@@ -281,9 +322,7 @@ function MachineModuleBlock({ config, module }: { config: ModuleMeshConfig; modu
         document.body.style.cursor = "default";
       }}
     >
-      <mesh
-        scale={config.scale}
-      >
+      <mesh scale={config.scale}>
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial transparent opacity={0.02} depthWrite={false} />
       </mesh>
@@ -291,10 +330,10 @@ function MachineModuleBlock({ config, module }: { config: ModuleMeshConfig; modu
       {active ? <SelectionFrame scale={config.scale} color={module.color} /> : null}
       {active ? (
         <Html center position={labelPosition}>
-          <div className="pointer-events-none w-44 rounded-md border border-accent/40 bg-slate-950/90 p-2 text-xs shadow-panel">
-            <div className="technical-label text-accent">{module.name}</div>
-            <div className="mt-1 text-slate-200">{module.status}</div>
-            <div className="mt-1 text-muted">{module.purpose}</div>
+          <div className="pointer-events-none w-48 rounded-md border border-accent/40 bg-slate-950/95 p-2.5 text-xs shadow-panel backdrop-blur-sm">
+            <div className="technical-label text-accent font-semibold">{module.name}</div>
+            <div className="mt-1 font-mono text-[10px] uppercase text-emerald-400">{module.status}</div>
+            <div className="mt-1.5 text-slate-300 leading-normal">{module.purpose}</div>
           </div>
         </Html>
       ) : null}
@@ -304,28 +343,55 @@ function MachineModuleBlock({ config, module }: { config: ModuleMeshConfig; modu
 
 function SelectionFrame({ scale, color }: { scale: [number, number, number]; color: string }) {
   return (
-    <mesh scale={[scale[0] * 1.06, scale[1] * 1.06, scale[2] * 1.06]}>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshBasicMaterial color={color} transparent opacity={0.32} wireframe />
+    <RoundedBox args={scale.map(s => s * 1.05) as [number, number, number]} radius={0.015} smoothness={4}>
+      <meshBasicMaterial color={color} transparent opacity={0.25} wireframe />
+    </RoundedBox>
+  );
+}
+
+function PulsingLED({ position, color, interval = 4 }: { position: [number, number, number]; color: string; interval?: number }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame((state) => {
+    if (ref.current) {
+      const material = ref.current.material as THREE.MeshStandardMaterial;
+      material.emissiveIntensity = 0.4 + Math.sin(state.clock.elapsedTime * interval) * 0.35;
+    }
+  });
+  return (
+    <mesh position={position} ref={ref}>
+      <sphereGeometry args={[0.015, 16, 16]} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.6} roughness={0.2} />
     </mesh>
   );
 }
 
 function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: string; active: boolean }) {
-  const glow = active ? 0.65 : 0.18;
+  const cutaway = useStudioStore((state) => state.cutaway);
 
   if (moduleId === "controller") {
     return (
       <group>
-        <ScreenPanel position={[-0.62, 0.05, 0.04]} scale={[0.72, 0.32, 0.04]} color="#dbeafe" />
-        <ScreenPanel position={[0.18, 0.05, 0.04]} scale={[0.72, 0.32, 0.04]} color="#e0f2fe" />
-        <ScreenPanel position={[0.84, -0.02, 0.045]} scale={[0.38, 0.28, 0.04]} color="#fef3c7" />
-        <Text position={[-0.62, -0.02, 0.075]} fontSize={0.07} color="#1e3a8a" anchorX="center" anchorY="middle">
-          MENU
+        {/* Main industrial control PLC housing */}
+        <RoundedBox args={[1.8, 0.44, 0.16]} radius={0.02} smoothness={3}>
+          <meshStandardMaterial color="#1e293b" roughness={0.5} metalness={0.7} />
+        </RoundedBox>
+        {/* Screens/Displays */}
+        <ScreenPanel position={[-0.45, 0.02, 0.085]} scale={[0.62, 0.28, 0.01]} color="#0c4a6e" />
+        <ScreenPanel position={[0.25, 0.02, 0.085]} scale={[0.62, 0.28, 0.01]} color="#4c0519" />
+        {/* Visual feedback text */}
+        <Text position={[-0.45, 0.02, 0.092]} fontSize={0.05} color="#38bdf8" anchorX="center" anchorY="middle">
+          SYS OK
         </Text>
-        <Text position={[0.18, -0.02, 0.075]} fontSize={0.065} color="#be123c" anchorX="center" anchorY="middle">
-          OFFER
+        <Text position={[0.25, 0.02, 0.092]} fontSize={0.05} color="#fda4af" anchorX="center" anchorY="middle">
+          D-VALVE
         </Text>
+        {/* Diagnostic LED Indicators */}
+        <PulsingLED position={[-0.82, 0.12, 0.09]} color="#10b981" interval={6} />
+        <PulsingLED position={[-0.82, 0.0, 0.09]} color="#f59e0b" interval={4} />
+        <PulsingLED position={[-0.82, -0.12, 0.09]} color="#3b82f6" interval={3} />
+        
+        <PulsingLED position={[0.68, 0.12, 0.09]} color="#10b981" interval={5} />
+        <PulsingLED position={[0.68, 0.0, 0.09]} color="#ef4444" interval={2} />
       </group>
     );
   }
@@ -333,16 +399,36 @@ function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: st
   if (moduleId === "prep") {
     return (
       <group>
-        <mesh position={[0, -0.02, -0.02]} scale={[1.02, 0.76, 0.16]}>
+        {/* Chamber enclosure back wall */}
+        <mesh position={[0, 0, -0.08]} scale={[1.25, 0.9, 0.05]}>
           <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#f8fafc" transparent opacity={0.2} roughness={0.2} />
+          <meshStandardMaterial color="#334155" roughness={0.3} metalness={0.8} />
         </mesh>
+        
+        {/* Drip Tray Grill */}
+        <group position={[0, -0.42, 0.05]}>
+          <mesh scale={[1.1, 0.08, 0.3]} castShadow receiveShadow>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#475569" roughness={0.2} metalness={0.9} />
+          </mesh>
+          {/* Slots/Lines */}
+          {[-0.4, -0.2, 0, 0.2, 0.4].map((zOffset) => (
+            <mesh key={zOffset} position={[0, 0.045, zOffset * 0.25]} scale={[1.0, 0.005, 0.015]}>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.1} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* Dynamic Cup Holder shuttle platform */}
+        <mesh position={[-0.35, -0.38, 0.15]} scale={[0.26, 0.04, 0.26]}>
+          <cylinderGeometry args={[0.5, 0.5, 1, 32]} />
+          <meshStandardMaterial color="#ea580c" roughness={0.4} metalness={0.3} />
+        </mesh>
+        
+        {/* Detailed components */}
         <RobotArm active={active} color={color} />
         <NozzleTree color={color} />
-        <mesh position={[-0.35, -0.36, 0.17]} scale={[0.2, 0.08, 0.2]}>
-          <cylinderGeometry args={[0.5, 0.42, 1, 32]} />
-          <meshStandardMaterial color="#f8fafc" roughness={0.35} />
-        </mesh>
       </group>
     );
   }
@@ -350,19 +436,35 @@ function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: st
   if (moduleId === "cup") {
     return (
       <group>
-        <mesh position={[0, -0.18, 0.05]} scale={[0.78, 0.62, 0.32]} castShadow>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#0f172a" emissive={color} emissiveIntensity={glow * 0.18} roughness={0.45} />
-        </mesh>
-        {[-0.18, -0.04, 0.1, 0.24].map((x) => (
-          <mesh key={x} position={[x, 0.22, 0.23]} rotation={[Math.PI / 2, 0, 0]} scale={[0.075, 0.075, 0.42]}>
-            <cylinderGeometry args={[1, 1, 1, 24]} />
-            <meshStandardMaterial color="#f8fafc" roughness={0.28} />
-          </mesh>
+        {/* Dispenser metal bracket */}
+        <RoundedBox args={[0.42, 0.68, 0.28]} radius={0.01} smoothness={2} position={[0, -0.05, 0.0]} castShadow>
+          <meshStandardMaterial color="#1e293b" roughness={0.4} metalness={0.8} />
+        </RoundedBox>
+        
+        {/* 4 Cup Magazine Columns */}
+        {[-0.15, -0.05, 0.05, 0.15].map((x, colIdx) => (
+          <group key={x} position={[x, 0.05, 0.08]}>
+            {/* Transparent outer tube */}
+            <mesh scale={[0.065, 0.58, 0.065]}>
+              <cylinderGeometry args={[1, 1, 1, 16]} />
+              <meshPhysicalMaterial color="#ffffff" transparent opacity={0.15} transmission={0.9} roughness={0.1} />
+            </mesh>
+            
+            {/* Stack of nested cups */}
+            {[0.2, 0.1, 0.0, -0.1, -0.2].map((y, cupIdx) => (
+              <mesh key={cupIdx} position={[0, y - 0.02, 0]} rotation={[Math.PI, 0, 0]} scale={[0.055, 0.09, 0.055]}>
+                <cylinderGeometry args={[0.8, 1, 1, 16, 1, true]} />
+                <meshStandardMaterial color={colIdx % 2 === 0 ? "#f8fafc" : "#fef08a"} roughness={0.3} side={THREE.DoubleSide} />
+              </mesh>
+            ))}
+            
+            {/* LED Fill Level indicator */}
+            <mesh position={[0, 0.32, 0.03]} scale={[0.015, 0.015, 0.015]}>
+              <sphereGeometry args={[1, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.8} />
+            </mesh>
+          </group>
         ))}
-        <Text position={[0, -0.02, 0.235]} fontSize={0.055} color="#fde68a" anchorX="center" anchorY="middle">
-          CUPS
-        </Text>
       </group>
     );
   }
@@ -370,15 +472,48 @@ function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: st
   if (moduleId === "flavor") {
     return (
       <group>
-        {[-0.24, -0.08, 0.08, 0.24].map((x, index) => (
-          <mesh key={x} position={[x, 0, 0.08]} scale={[0.1, 0.52, 0.12]}>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color={["#f97316", "#ec4899", "#facc15", "#22c55e"][index]} transparent opacity={0.82} emissive={color} emissiveIntensity={active ? 0.18 : 0.04} />
-          </mesh>
-        ))}
-        <Text position={[0, -0.36, 0.12]} fontSize={0.06} color="#fdf2f8" anchorX="center" anchorY="middle">
-          FLAVOR
-        </Text>
+        {/* Flavor Cabinet Shelf Rack */}
+        <mesh position={[0, -0.24, 0.0]} scale={[0.54, 0.03, 0.25]}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#334155" metalness={0.7} roughness={0.2} />
+        </mesh>
+        
+        {/* 4 Syrup Bottles */}
+        {[-0.2, -0.07, 0.07, 0.2].map((x, index) => {
+          const liquidColor = ["#f97316", "#db2777", "#eab308", "#10b981"][index];
+          return (
+            <group key={x} position={[x, 0.04, 0.06]}>
+              {/* Bottle glass body */}
+              <RoundedBox args={[0.1, 0.38, 0.1]} radius={0.015} smoothness={2} castShadow>
+                <meshPhysicalMaterial color="#ffffff" transparent opacity={0.2} transmission={0.95} roughness={0.05} />
+              </RoundedBox>
+              
+              {/* Colored liquid inside bottle */}
+              <mesh position={[0, -0.03, 0]} scale={[0.088, 0.3, 0.088]} castShadow>
+                <boxGeometry args={[1, 1, 1]} />
+                <meshPhysicalMaterial color={liquidColor} roughness={0.1} transmission={0.7} opacity={0.8} />
+              </mesh>
+              
+              {/* Bottle Neck */}
+              <mesh position={[0, 0.21, 0]} scale={[0.035, 0.08, 0.035]}>
+                <cylinderGeometry args={[1, 1, 1, 16]} />
+                <meshStandardMaterial color="#e2e8f0" roughness={0.2} metalness={0.6} />
+              </mesh>
+              
+              {/* Bottle Cap */}
+              <mesh position={[0, 0.25, 0]} scale={[0.042, 0.02, 0.042]}>
+                <cylinderGeometry args={[1, 1, 1, 16]} />
+                <meshStandardMaterial color="#0f172a" roughness={0.4} />
+              </mesh>
+              
+              {/* Fluid Delivery Tube curving downwards */}
+              <mesh position={[0, -0.22, -0.02]} rotation={[Math.PI / 6, 0, 0]} scale={[0.01, 0.12, 0.01]}>
+                <cylinderGeometry args={[1, 1, 1, 8]} />
+                <meshStandardMaterial color={liquidColor} transparent opacity={0.6} />
+              </mesh>
+            </group>
+          );
+        })}
       </group>
     );
   }
@@ -386,23 +521,46 @@ function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: st
   if (moduleId === "boba") {
     return (
       <group>
-        {[-0.22, 0, 0.22].map((x) => (
-          <group key={x} position={[x, 0, 0.08]}>
-            <mesh scale={[0.12, 0.5, 0.12]}>
-              <cylinderGeometry args={[1, 1, 1, 32]} />
-              <meshStandardMaterial color="#fef08a" transparent opacity={0.72} emissive={color} emissiveIntensity={active ? 0.14 : 0.04} />
+        {/* Hopper Support Plate */}
+        <mesh position={[0, -0.24, 0.0]} scale={[0.54, 0.03, 0.24]}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial color="#334155" metalness={0.7} roughness={0.2} />
+        </mesh>
+        
+        {/* 3 Translucent Boba Hoppers */}
+        {[-0.18, 0, 0.18].map((x, hopIdx) => (
+          <group key={x} position={[x, 0.06, 0.06]}>
+            {/* Tapered Funnel Hopper Body */}
+            <mesh scale={[0.08, 0.34, 0.08]} castShadow>
+              <cylinderGeometry args={[1.0, 0.55, 1, 24]} />
+              <meshPhysicalMaterial color="#e2e8f0" transparent opacity={0.22} transmission={0.92} roughness={0.1} />
             </mesh>
-            {[0.1, 0.0, -0.1].map((y, index) => (
-              <mesh key={`${x}-${y}-${index}`} position={[0.02 * index, y, 0.13]} scale={[0.025, 0.025, 0.025]}>
-                <sphereGeometry args={[1, 12, 12]} />
-                <meshStandardMaterial color="#fb923c" />
-              </mesh>
+            
+            {/* Cluster of realistic boba spheres inside */}
+            {[-0.08, -0.02, 0.04].map((y, idx) => (
+              <group key={idx} position={[0, y + 0.04, 0]}>
+                {[-0.03, 0.0, 0.03].map((bx, bIdx) => (
+                  <mesh key={bIdx} position={[bx, 0, (bIdx % 2 === 0 ? 0.025 : -0.025)]} scale={[0.024, 0.024, 0.024]}>
+                    <sphereGeometry args={[1, 8, 8]} />
+                    <meshStandardMaterial color={hopIdx === 0 ? "#111827" : hopIdx === 1 ? "#ea580c" : "#f1c40f"} roughness={0.18} />
+                  </mesh>
+                ))}
+              </group>
             ))}
+            
+            {/* Dosing Valve Gate housing under the hopper */}
+            <mesh position={[0, -0.2, 0]} scale={[0.06, 0.06, 0.06]} castShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.3} />
+            </mesh>
+            
+            {/* Valve Stepper Motor */}
+            <mesh position={[0, -0.2, -0.04]} scale={[0.045, 0.045, 0.04]} castShadow>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.4} />
+            </mesh>
           </group>
         ))}
-        <Text position={[0, -0.36, 0.13]} fontSize={0.055} color="#fef9c3" anchorX="center" anchorY="middle">
-          BOBA
-        </Text>
       </group>
     );
   }
@@ -410,51 +568,175 @@ function ModuleVisual({ moduleId, color, active }: { moduleId: string; color: st
   if (moduleId === "water") {
     return (
       <group>
-        <mesh position={[0, 0, 0]} scale={[0.18, 0.82, 0.18]}>
-          <cylinderGeometry args={[1, 1, 1, 32]} />
-          <meshStandardMaterial color="#38bdf8" transparent opacity={0.68} emissive="#38bdf8" emissiveIntensity={active ? 0.28 : 0.1} />
-        </mesh>
-        {[-0.22, 0.22].map((y) => (
-          <mesh key={y} position={[-0.02, y, 0.18]} rotation={[Math.PI / 2, 0, Math.PI / 2]} scale={[0.035, 0.035, 0.58]}>
-            <cylinderGeometry args={[1, 1, 1, 16]} />
-            <meshStandardMaterial color="#67e8f9" emissive="#22d3ee" emissiveIntensity={0.38} />
+        {/* Main CO2 High-Pressure cylinder */}
+        <group position={[-0.09, 0.0, 0.02]}>
+          <mesh scale={[0.13, 0.74, 0.13]} castShadow>
+            <cylinderGeometry args={[1, 1, 1, 24]} />
+            <meshStandardMaterial color="#64748b" roughness={0.3} metalness={0.8} />
           </mesh>
-        ))}
-        <Text position={[0, -0.66, 0.16]} fontSize={0.05} color="#e0f2fe" anchorX="center" anchorY="middle">
-          WATER / CO2
-        </Text>
+          {/* Cylinder Dome top */}
+          <mesh position={[0, 0.37, 0]} scale={[0.13, 0.08, 0.13]}>
+            <sphereGeometry args={[1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color="#64748b" roughness={0.3} metalness={0.8} />
+          </mesh>
+          
+          {/* Brass Regulator & Valve Block */}
+          <group position={[0, 0.44, 0]}>
+            <mesh scale={[0.038, 0.06, 0.038]}>
+              <cylinderGeometry args={[1, 1, 1, 16]} />
+              <meshStandardMaterial color="#d97706" metalness={0.8} roughness={0.2} />
+            </mesh>
+            {/* Dual Gauges */}
+            <mesh position={[0.03, 0.02, 0.0]} rotation={[0, 0, -Math.PI / 2]} scale={[0.025, 0.015, 0.025]}>
+              <cylinderGeometry args={[1, 1, 1, 16]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.2} />
+            </mesh>
+            <mesh position={[-0.03, 0.02, 0.0]} rotation={[0, 0, Math.PI / 2]} scale={[0.025, 0.015, 0.025]}>
+              <cylinderGeometry args={[1, 1, 1, 16]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.2} />
+            </mesh>
+            {/* Regulator Knob */}
+            <mesh position={[0, 0.04, 0.03]} rotation={[Math.PI / 2, 0, 0]} scale={[0.022, 0.012, 0.022]}>
+              <cylinderGeometry args={[1, 1, 1, 12]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.5} />
+            </mesh>
+          </group>
+        </group>
+
+        {/* High-Pressure water carbonation tank */}
+        <group position={[0.11, -0.05, 0.04]}>
+          <mesh scale={[0.09, 0.58, 0.09]} castShadow>
+            <cylinderGeometry args={[1, 1, 1, 24]} />
+            <meshStandardMaterial color="#0284c7" roughness={0.2} metalness={0.9} />
+          </mesh>
+          {/* Carbonator Dome Top */}
+          <mesh position={[0, 0.29, 0]} scale={[0.09, 0.05, 0.09]}>
+            <sphereGeometry args={[1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color="#0284c7" roughness={0.2} metalness={0.9} />
+          </mesh>
+          
+          {/* Braided water tubes curving into the tank */}
+          {[-0.05, 0.05].map((tx) => (
+            <mesh key={tx} position={[tx, 0.35, -0.02]} rotation={[Math.PI / 4, 0, 0]} scale={[0.008, 0.1, 0.008]}>
+              <cylinderGeometry args={[1, 1, 1, 8]} />
+              <meshStandardMaterial color="#e2e8f0" metalness={0.9} roughness={0.1} />
+            </mesh>
+          ))}
+        </group>
       </group>
     );
   }
 
   if (moduleId === "electrical") {
+    // If cutaway is active, show the DIN-rail wiring details
+    if (cutaway) {
+      return (
+        <group>
+          {/* Backplate */}
+          <mesh position={[0, 0, -0.06]} scale={[0.66, 0.48, 0.02]}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.7} roughness={0.3} />
+          </mesh>
+          
+          {/* DIN Rail */}
+          <mesh position={[0, 0.06, -0.04]} scale={[0.6, 0.03, 0.015]}>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.1} />
+          </mesh>
+          
+          {/* Circuit Breaker blocks */}
+          {[-0.2, -0.14, -0.08, -0.02, 0.04, 0.1].map((x, idx) => (
+            <mesh key={x} position={[x, 0.06, -0.02]} scale={[0.04, 0.12, 0.04]}>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color={idx % 3 === 0 ? "#ef4444" : idx % 3 === 1 ? "#3b82f6" : "#eab308"} roughness={0.4} />
+            </mesh>
+          ))}
+          
+          {/* MeanWell Switch Mode Power Supply block */}
+          <mesh position={[0.2, -0.08, -0.02]} scale={[0.14, 0.18, 0.06]} castShadow>
+            <boxGeometry args={[1, 1, 1]} />
+            <meshStandardMaterial color="#475569" metalness={0.9} roughness={0.2} />
+          </mesh>
+          
+          {/* Bundle of wires */}
+          {[-0.15, 0.0, 0.15].map((wz, wireIdx) => (
+            <mesh key={wz} position={[wz, -0.15, -0.03]} rotation={[0, 0, Math.PI / 2]} scale={[0.008, 0.28, 0.008]}>
+              <cylinderGeometry args={[1, 1, 1, 8]} />
+              <meshStandardMaterial color={wireIdx === 0 ? "#3b82f6" : wireIdx === 1 ? "#ef4444" : "#10b981"} roughness={0.3} />
+            </mesh>
+          ))}
+        </group>
+      );
+    }
+    
+    // Normal state: front payment kiosk details
     return (
       <group>
-        <mesh position={[0, 0, 0.04]} scale={[0.9, 0.62, 0.1]}>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#ea580c" emissive="#fb923c" emissiveIntensity={active ? 0.34 : 0.12} roughness={0.4} />
-        </mesh>
-        <ScreenPanel position={[-0.22, 0.08, 0.12]} scale={[0.25, 0.34, 0.035]} color="#fef3c7" />
-        <ScreenPanel position={[0.2, 0.08, 0.12]} scale={[0.28, 0.34, 0.035]} color="#111827" />
-        <Text position={[-0.22, 0.08, 0.15]} fontSize={0.06} color="#f97316" anchorX="center" anchorY="middle">
-          QR
+        {/* Payment terminal bezel */}
+        <RoundedBox args={[0.62, 0.44, 0.06]} radius={0.015} smoothness={2} castShadow>
+          <meshStandardMaterial color="#0f172a" roughness={0.3} metalness={0.6} />
+        </RoundedBox>
+        {/* HMI interface details */}
+        <ScreenPanel position={[-0.16, 0.04, 0.035]} scale={[0.22, 0.28, 0.01]} color="#1e3a8a" />
+        <ScreenPanel position={[0.16, 0.04, 0.035]} scale={[0.22, 0.28, 0.01]} color="#111827" />
+        {/* Screen labels */}
+        <Text position={[-0.16, 0.04, 0.042]} fontSize={0.045} color="#60a5fa" anchorX="center" anchorY="middle">
+          SWIPE
         </Text>
-        <Text position={[0.2, 0.08, 0.15]} fontSize={0.045} color="#fde68a" anchorX="center" anchorY="middle">
-          PAY
+        <Text position={[0.16, 0.04, 0.042]} fontSize={0.04} color="#34d399" anchorX="center" anchorY="middle">
+          TAP
         </Text>
+        {/* Indicator LEDs */}
+        <PulsingLED position={[-0.16, -0.14, 0.035]} color="#10b981" interval={3} />
+        <PulsingLED position={[0.16, -0.14, 0.035]} color="#10b981" interval={3} />
       </group>
     );
   }
 
+  // default: Refrigeration Module
   return (
     <group>
-      <mesh position={[0, 0, 0.03]} scale={[1, 0.76, 0.2]} castShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#172554" emissive={color} emissiveIntensity={active ? 0.28 : 0.08} roughness={0.42} />
-      </mesh>
-      <Text position={[0, 0, 0.16]} fontSize={0.06} color="#bfdbfe" anchorX="center" anchorY="middle">
-        CHILLER
-      </Text>
+      {/* Insulated cooler enclosure cabinet */}
+      <RoundedBox args={[1.72, 0.42, 0.22]} radius={0.015} smoothness={2} castShadow>
+        <meshStandardMaterial color="#334155" metalness={0.6} roughness={0.3} />
+      </RoundedBox>
+      
+      {/* Condenser / Fan grid vents */}
+      {[-0.42, 0.42].map((x) => (
+        <group key={x} position={[x, 0.0, 0.115]}>
+          {/* Vent Ring Bezel */}
+          <mesh scale={[0.18, 0.18, 0.01]}>
+            <cylinderGeometry args={[1, 1, 1, 32]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.4} />
+          </mesh>
+          
+          {/* Fan Hub */}
+          <mesh position={[0, 0, 0.01]} scale={[0.045, 0.045, 0.01]}>
+            <cylinderGeometry args={[1, 1, 1, 16]} />
+            <meshStandardMaterial color="#475569" roughness={0.3} />
+          </mesh>
+          
+          {/* 4 Fan Blades */}
+          {[0, Math.PI / 4, Math.PI / 2, (3 * Math.PI) / 4].map((angle, bladeIdx) => (
+            <mesh key={bladeIdx} position={[0, 0, 0.005]} rotation={[0, 0, angle]} scale={[0.015, 0.14, 0.003]}>
+              <boxGeometry args={[1, 1, 1]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.5} />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      
+      {/* Cooling Compressors / Tanks visible through back grid */}
+      <group position={[0, -0.05, -0.02]}>
+        <mesh scale={[0.16, 0.22, 0.16]} castShadow>
+          <cylinderGeometry args={[1, 1, 1, 16]} />
+          <meshStandardMaterial color="#111827" roughness={0.3} metalness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.11, 0]} scale={[0.16, 0.08, 0.16]}>
+          <sphereGeometry args={[1, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
+          <meshStandardMaterial color="#111827" roughness={0.3} metalness={0.7} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -469,32 +751,104 @@ function ScreenPanel({ position, scale, color }: { position: [number, number, nu
 }
 
 function RobotArm({ active, color }: { active: boolean; color: string }) {
+  const baseRef = useRef<THREE.Group>(null);
+  const forearmRef = useRef<THREE.Mesh>(null);
+  
+  // Subtle micro-animation when active to represent robot arm operating
+  useFrame((state) => {
+    if (active && baseRef.current && forearmRef.current) {
+      const t = state.clock.elapsedTime;
+      baseRef.current.rotation.y = -0.42 + Math.sin(t * 1.5) * 0.18;
+      forearmRef.current.rotation.x = Math.cos(t * 1.5) * 0.12;
+    }
+  });
+
   return (
-    <group position={[0.15, -0.02, 0.2]} rotation={[0, 0, -0.42]}>
-      <mesh position={[-0.24, 0.12, 0]} rotation={[0, 0, Math.PI / 4]} scale={[0.045, 0.045, 0.45]}>
-        <cylinderGeometry args={[1, 1, 1, 16]} />
-        <meshStandardMaterial color="#e5e7eb" emissive={color} emissiveIntensity={active ? 0.12 : 0.02} roughness={0.3} metalness={0.25} />
+    <group position={[0.0, -0.08, 0.18]} ref={baseRef} rotation={[0, -0.42, 0]}>
+      {/* Robot Base Mount */}
+      <mesh position={[0, -0.15, 0]} scale={[0.1, 0.08, 0.1]} castShadow>
+        <cylinderGeometry args={[1, 1.2, 1, 24]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.9} roughness={0.3} />
       </mesh>
-      <mesh position={[0.1, -0.1, 0]} rotation={[0, 0, -Math.PI / 4]} scale={[0.04, 0.04, 0.42]}>
-        <cylinderGeometry args={[1, 1, 1, 16]} />
-        <meshStandardMaterial color="#d1d5db" roughness={0.3} metalness={0.25} />
-      </mesh>
-      <mesh position={[0.34, -0.28, 0]} scale={[0.07, 0.07, 0.07]}>
+      
+      {/* Joint 1 (Base pivot) */}
+      <mesh position={[0, -0.08, 0]} scale={[0.065, 0.065, 0.065]} castShadow>
         <sphereGeometry args={[1, 24, 24]} />
-        <meshStandardMaterial color="#f97316" emissive="#f97316" emissiveIntensity={0.22} />
+        <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.15} />
       </mesh>
+
+      {/* Main Link (Arm Segment 1) */}
+      <mesh position={[0.0, 0.08, 0]} rotation={[0, 0, Math.PI / 8]} scale={[0.038, 0.28, 0.038]} castShadow>
+        <cylinderGeometry args={[1, 1, 1, 16]} />
+        <meshStandardMaterial color="#cbd5e1" metalness={0.8} roughness={0.25} />
+      </mesh>
+      
+      {/* Joint 2 (Elbow pivot) */}
+      <mesh position={[0.09, 0.2, 0]} scale={[0.05, 0.05, 0.05]} castShadow>
+        <sphereGeometry args={[1, 24, 24]} />
+        <meshStandardMaterial color="#fb923c" emissive="#f97316" emissiveIntensity={active ? 0.35 : 0.08} />
+      </mesh>
+
+      {/* Forearm Link (Arm Segment 2) */}
+      <group position={[0.09, 0.2, 0]} rotation={[0, 0, -Math.PI / 4]}>
+        <mesh position={[0.1, -0.1, 0]} scale={[0.03, 0.22, 0.03]} ref={forearmRef} castShadow>
+          <cylinderGeometry args={[1, 1, 1, 16]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.9} roughness={0.2} />
+        </mesh>
+        
+        {/* Joint 3 (Wrist/End-Effector mount) */}
+        <mesh position={[0.18, -0.2, 0]} scale={[0.042, 0.042, 0.042]}>
+          <sphereGeometry args={[1, 24, 24]} />
+          <meshStandardMaterial color="#475569" metalness={0.8} roughness={0.15} />
+        </mesh>
+        
+        {/* Cup grabber ring / Claw assembly */}
+        <group position={[0.18, -0.22, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          {/* Circular grip claw */}
+          <mesh scale={[0.08, 0.02, 0.08]}>
+            <cylinderGeometry args={[1, 1.05, 1, 24, 1, true]} />
+            <meshStandardMaterial color="#ea580c" roughness={0.3} side={THREE.DoubleSide} />
+          </mesh>
+          {/* Glow ring in claw */}
+          <mesh scale={[0.075, 0.008, 0.075]} position={[0, 0.01, 0]}>
+            <cylinderGeometry args={[1, 1.01, 1, 24, 1, true]} />
+            <meshBasicMaterial color={color} transparent opacity={0.65} />
+          </mesh>
+        </group>
+      </group>
     </group>
   );
 }
 
 function NozzleTree({ color }: { color: string }) {
   return (
-    <group position={[0.44, -0.23, 0.2]}>
-      {[-0.08, 0, 0.08].map((x) => (
-        <mesh key={x} position={[x, 0, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[0.025, 0.025, 0.22]}>
-          <cylinderGeometry args={[1, 1, 1, 12]} />
-          <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.28} />
-        </mesh>
+    <group position={[0.42, 0.02, 0.15]}>
+      {/* Manifold mount block */}
+      <RoundedBox args={[0.22, 0.06, 0.12]} radius={0.008} smoothness={2} castShadow>
+        <meshStandardMaterial color="#1e293b" metalness={0.8} roughness={0.3} />
+      </RoundedBox>
+      
+      {/* Stainless dispense nozzles */}
+      {[-0.07, 0, 0.07].map((x, nozzleIdx) => (
+        <group key={x} position={[x, -0.11, 0.0]}>
+          {/* Curved steel tube */}
+          <mesh rotation={[0, 0, 0]} scale={[0.014, 0.16, 0.014]} castShadow>
+            <cylinderGeometry args={[1, 1, 1, 12]} />
+            <meshStandardMaterial color="#cbd5e1" metalness={0.9} roughness={0.1} />
+          </mesh>
+          
+          {/* Glowing nozzle outlet ring */}
+          <mesh position={[0, -0.08, 0]} scale={[0.018, 0.006, 0.018]}>
+            <cylinderGeometry args={[1, 1, 1, 12]} />
+            <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} />
+          </mesh>
+          
+          {/* Dispensing stream (semi-transparent cylinder) */}
+          <mesh position={[0, -0.23, 0]} scale={[0.008, 0.3, 0.008]}>
+            <cylinderGeometry args={[1, 1, 1, 8]} />
+            <meshPhysicalMaterial color={color} transparent opacity={nozzleIdx === 1 ? 0.65 : 0.0} transmission={0.9} roughness={0.05} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
