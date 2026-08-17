@@ -18,6 +18,14 @@ interface ModuleMeshConfig {
   labelOffset?: [number, number, number];
 }
 
+const themeColors: Record<string, { body: string; accent: string; glow: string }> = {
+  "#ea580c": { body: "#150903", accent: "#ea580c", glow: "#ff782e" }, // Orange theme (Deep Rust / Bright Orange)
+  "#06b6d4": { body: "#031920", accent: "#06b6d4", glow: "#22d3ee" }, // Cyan theme (Midnight Cyan / Neon Cyan)
+  "#10b981": { body: "#032015", accent: "#10b981", glow: "#34d399" }, // Emerald theme (Forest Green / Emerald)
+  "#8b5cf6": { body: "#110b25", accent: "#8b5cf6", glow: "#a78bfa" }, // Violet theme (Deep Violet / Neon Violet)
+  "#f43f5e": { body: "#1f0408", accent: "#f43f5e", glow: "#fb7185" }  // Rose theme (Dark Rose / Neon Rose)
+};
+
 const moduleMeshes: ModuleMeshConfig[] = [
   { id: "controller", position: [0, 1.82, 0.72], explodedPosition: [0, 2.78, 1.1], scale: [2.05, 0.52, 0.25], labelOffset: [0, 0.55, 0.08] },
   { id: "prep", position: [0.1, 0.58, 0.78], explodedPosition: [0.1, 0.72, 1.72], scale: [1.45, 1.05, 0.36], labelOffset: [0, 0.78, 0.08] },
@@ -157,44 +165,46 @@ function MachineModel() {
 }
 
 function CabinetShell({ cutaway, machineColor }: { cutaway: boolean; machineColor: string }) {
+  const theme = themeColors[machineColor] ?? themeColors["#ea580c"];
+
   return (
     <group>
       {/* Main Back Panel */}
       <mesh position={[0, 0.18, -0.1]} castShadow receiveShadow>
         <boxGeometry args={[2.85, 3.95, 0.5]} />
-        <meshStandardMaterial color="#0b0f16" roughness={0.65} metalness={0.15} />
+        <meshStandardMaterial color={theme.body} roughness={0.65} metalness={0.15} />
       </mesh>
 
       {/* Main Structural Frame - Bevelled Corners using RoundedBox */}
       <RoundedBox position={[0, 0.18, 0.08]} args={[2.85, 3.95, 0.86]} radius={0.06} smoothness={4} castShadow receiveShadow>
-        <meshStandardMaterial color="#080b10" roughness={0.48} metalness={0.25} />
+        <meshStandardMaterial color={theme.body} roughness={0.48} metalness={0.25} />
       </RoundedBox>
 
       {/* Custom Chassis Accent Header */}
       <RoundedBox position={[0, 2.42, 0.18]} args={[2.95, 0.38, 0.95]} radius={0.04} smoothness={4} castShadow>
-        <meshStandardMaterial color={machineColor} emissive={machineColor} emissiveIntensity={0.12} roughness={0.35} metalness={0.4} />
+        <meshStandardMaterial color={theme.accent} emissive={theme.glow} emissiveIntensity={0.12} roughness={0.35} metalness={0.4} />
       </RoundedBox>
 
       {/* Custom Chassis Accent Footer */}
       <RoundedBox position={[0, -1.68, 0.22]} args={[2.92, 0.28, 1.0]} radius={0.04} smoothness={4} castShadow>
-        <meshStandardMaterial color={machineColor} emissive={machineColor} emissiveIntensity={0.08} roughness={0.35} metalness={0.4} />
+        <meshStandardMaterial color={theme.accent} emissive={theme.glow} emissiveIntensity={0.08} roughness={0.35} metalness={0.4} />
       </RoundedBox>
 
       {/* Side Pillar Left */}
       <mesh position={[-1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.25} metalness={0.5} />
+        <meshStandardMaterial color={theme.body} roughness={0.25} metalness={0.5} />
       </mesh>
 
       {/* Side Pillar Right */}
       <mesh position={[1.54, 0.18, 0.52]} castShadow>
         <boxGeometry args={[0.18, 3.7, 0.38]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.25} metalness={0.5} />
+        <meshStandardMaterial color={theme.body} roughness={0.25} metalness={0.5} />
       </mesh>
 
-      <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} color={machineColor} />
-      <Trim position={[0, -0.58, 0.99]} scale={[2.75, 0.04, 0.05]} color={machineColor} />
-      <Trim position={[0, -1.58, 1.02]} scale={[2.75, 0.05, 0.05]} color={machineColor} />
+      <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} color={theme.accent} />
+      <Trim position={[0, -0.58, 0.99]} scale={[2.75, 0.04, 0.05]} color={theme.accent} />
+      <Trim position={[0, -1.58, 1.02]} scale={[2.75, 0.05, 0.05]} color={theme.accent} />
 
       {/* Premium Glass Cover (Transparent / Reflective in Normal, Wireframe in Cutaway) */}
       {!cutaway ? (
