@@ -32,10 +32,20 @@ const moduleMeshes: ModuleMeshConfig[] = [
 export function MachineViewport() {
   const exploded = useStudioStore((state) => state.exploded);
   const cutaway = useStudioStore((state) => state.cutaway);
+  const machineColor = useStudioStore((state) => state.machineColor);
   const toggleExploded = useStudioStore((state) => state.toggleExploded);
   const toggleCutaway = useStudioStore((state) => state.toggleCutaway);
+  const setMachineColor = useStudioStore((state) => state.setMachineColor);
   const selectedModuleId = useStudioStore((state) => state.selectedModuleId);
   const selected = modules.find((module) => module.id === selectedModuleId) ?? modules[0];
+
+  const colors = [
+    { label: "Orange", hex: "#ea580c" },
+    { label: "Cyan", hex: "#06b6d4" },
+    { label: "Emerald", hex: "#10b981" },
+    { label: "Violet", hex: "#8b5cf6" },
+    { label: "Rose", hex: "#f43f5e" }
+  ];
 
   return (
     <section id="machine-layout" className="panel overflow-hidden rounded-lg">
@@ -44,7 +54,26 @@ export function MachineViewport() {
           <p className="technical-label text-accent">Interactive Machine View</p>
           <h2 className="mt-1 text-xl font-semibold">1850 x 850 x 800 mm POPAPOPZ Envelope</h2>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 border-r border-border/80 pr-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 font-mono">Chassis:</span>
+            <div className="flex gap-1.5">
+              {colors.map((c) => (
+                <button
+                  key={c.hex}
+                  className={`h-5 w-5 rounded-full border transition-all ${
+                    machineColor === c.hex
+                      ? "border-white scale-110 ring-2 ring-emerald-500/25"
+                      : "border-transparent hover:scale-105"
+                  }`}
+                  style={{ backgroundColor: c.hex }}
+                  onClick={() => setMachineColor(c.hex)}
+                  title={c.label}
+                  type="button"
+                />
+              ))}
+            </div>
+          </div>
           <button
             className="inline-flex items-center gap-2 rounded-md border border-border bg-white/[0.04] px-3 py-2 text-sm hover:bg-white/[0.08]"
             onClick={toggleExploded}
@@ -113,10 +142,11 @@ export function MachineViewport() {
 
 function MachineModel() {
   const cutaway = useStudioStore((state) => state.cutaway);
+  const machineColor = useStudioStore((state) => state.machineColor);
 
   return (
     <group position={[0, -0.25, 0]} scale={0.86}>
-      <CabinetShell cutaway={cutaway} />
+      <CabinetShell cutaway={cutaway} machineColor={machineColor} />
       <StaticKioskDetails cutaway={cutaway} />
       {moduleMeshes.map((config) => {
         const machineModule = modules.find((item) => item.id === config.id);
@@ -126,7 +156,7 @@ function MachineModel() {
   );
 }
 
-function CabinetShell({ cutaway }: { cutaway: boolean }) {
+function CabinetShell({ cutaway, machineColor }: { cutaway: boolean; machineColor: string }) {
   return (
     <group>
       {/* Main Back Panel */}
@@ -140,14 +170,14 @@ function CabinetShell({ cutaway }: { cutaway: boolean }) {
         <meshStandardMaterial color="#080b10" roughness={0.48} metalness={0.25} />
       </RoundedBox>
 
-      {/* Orange Accent Header */}
+      {/* Custom Chassis Accent Header */}
       <RoundedBox position={[0, 2.42, 0.18]} args={[2.95, 0.38, 0.95]} radius={0.04} smoothness={4} castShadow>
-        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.2} roughness={0.35} metalness={0.4} />
+        <meshStandardMaterial color={machineColor} emissive={machineColor} emissiveIntensity={0.12} roughness={0.35} metalness={0.4} />
       </RoundedBox>
 
-      {/* Orange Accent Footer */}
+      {/* Custom Chassis Accent Footer */}
       <RoundedBox position={[0, -1.68, 0.22]} args={[2.92, 0.28, 1.0]} radius={0.04} smoothness={4} castShadow>
-        <meshStandardMaterial color="#ea580c" emissive="#7c2d12" emissiveIntensity={0.15} roughness={0.35} metalness={0.4} />
+        <meshStandardMaterial color={machineColor} emissive={machineColor} emissiveIntensity={0.08} roughness={0.35} metalness={0.4} />
       </RoundedBox>
 
       {/* Side Pillar Left */}
@@ -162,9 +192,9 @@ function CabinetShell({ cutaway }: { cutaway: boolean }) {
         <meshStandardMaterial color="#0f172a" roughness={0.25} metalness={0.5} />
       </mesh>
 
-      <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} />
-      <Trim position={[0, -0.58, 0.99]} scale={[2.75, 0.04, 0.05]} />
-      <Trim position={[0, -1.58, 1.02]} scale={[2.75, 0.05, 0.05]} />
+      <Trim position={[0, 1.62, 0.98]} scale={[2.66, 0.05, 0.05]} color={machineColor} />
+      <Trim position={[0, -0.58, 0.99]} scale={[2.75, 0.04, 0.05]} color={machineColor} />
+      <Trim position={[0, -1.58, 1.02]} scale={[2.75, 0.05, 0.05]} color={machineColor} />
 
       {/* Premium Glass Cover (Transparent / Reflective in Normal, Wireframe in Cutaway) */}
       {!cutaway ? (
@@ -241,11 +271,11 @@ function SignPanel({
   );
 }
 
-function Trim({ position, scale }: { position: [number, number, number]; scale: [number, number, number] }) {
+function Trim({ position, scale, color }: { position: [number, number, number]; scale: [number, number, number]; color: string }) {
   return (
     <mesh position={position} scale={scale}>
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color="#fb923c" emissive="#f97316" emissiveIntensity={0.55} roughness={0.3} />
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.45} roughness={0.3} />
     </mesh>
   );
 }
