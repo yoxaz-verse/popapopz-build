@@ -410,15 +410,6 @@ function MachineModuleBlock({ config, module }: { config: ModuleMeshConfig; modu
       </mesh>
       <ModuleVisual moduleId={module.id} color={module.color} active={active} />
       {active ? <SelectionFrame scale={config.scale} color={module.color} /> : null}
-      {active ? (
-        <Html center position={labelPosition}>
-          <div className="pointer-events-none w-48 rounded-md border border-accent/40 bg-slate-950/95 p-2.5 text-xs shadow-panel backdrop-blur-sm">
-            <div className="technical-label text-accent font-semibold">{module.name}</div>
-            <div className="mt-1 font-mono text-[10px] uppercase text-emerald-400">{module.status}</div>
-            <div className="mt-1.5 text-slate-300 leading-normal">{module.purpose}</div>
-          </div>
-        </Html>
-      ) : null}
     </group>
   );
 }
