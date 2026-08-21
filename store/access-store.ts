@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { getAssignableWorkItem } from "@/lib/access/assignable-work";
+import { getAssignableWorkItem, getRequiredRoleSeatCount } from "@/lib/access/assignable-work";
 import { dashboardSections, defaultEngineerPermissions, defaultSectionProgress } from "@/lib/access/sections";
 import {
   mapAssignmentRows,
@@ -9,10 +9,12 @@ import {
   mapProfileToEngineer,
   mapProfileToSession,
   mapProgressRows,
+  mapStaffingRows,
   type AssignmentRow,
   type PermissionRow,
   type ProfileRow,
-  type ProgressRow
+  type ProgressRow,
+  type StaffingRow
 } from "@/lib/access/supabase-mappers";
 import { supabase } from "@/lib/supabase/client";
 import type {
@@ -22,6 +24,7 @@ import type {
   DashboardSectionPermission,
   EngineerProfile,
   EngineerWorkAssignment,
+  EngineerWorkStaffing,
   SectionProgress,
   SectionProgressStatus,
   UserRole
@@ -39,6 +42,7 @@ interface AccessState {
   engineers: EngineerProfile[];
   selectedEngineerId: string | null;
   assignments: EngineerWorkAssignment[];
+  staffing: EngineerWorkStaffing[];
   engineerPermissions: Record<DashboardSectionId, DashboardSectionPermission>;
   progress: Record<DashboardSectionId, SectionProgress>;
   loading: boolean;
@@ -52,6 +56,8 @@ interface AccessState {
   setEngineerPermission: (sectionId: DashboardSectionId, canView: boolean) => Promise<void>;
   assignWorkItem: (update: { engineerId: string; entityType: AssignmentEntityType; entityId: string }) => Promise<void>;
   unassignWorkItem: (entityType: AssignmentEntityType, entityId: string) => Promise<void>;
+  assignStaffingSeat: (update: { engineerId: string; entityType: AssignmentEntityType; entityId: string; roleName: string }) => Promise<void>;
+  removeStaffingSeat: (staffingId: string) => Promise<void>;
   updateWorkAssignment: (
     assignmentId: string,
     update: { progressPercent: number; status: EngineerWorkAssignment["status"]; note: string }
@@ -79,7 +85,7 @@ function accessErrorMessage(error: unknown) {
         ? String(error.message)
         : "Unable to connect to Supabase.";
 
-  if (/relation .*profiles.* does not exist|section_progress|engineer_section_permissions|engineer_work_assignments|schema cache|PGRST/i.test(message)) {
+  if (/relation .*profiles.* does not exist|section_progress|engineer_section_permissions|engineer_work_assignments|engineer_work_staffing|schema cache|PGRST/i.test(message)) {
     return "Supabase database is not ready. Create the Auth users, then run supabase/migrations/20260821_access_progress.sql in the Supabase SQL Editor.";
   }
 
@@ -174,11 +180,30 @@ async function loadAssignments(session: AuthSession) {
   return mapAssignmentRows(data || []);
 }
 
+async function loadStaffing(session: AuthSession) {
+  let query = supabase
+    .from("engineer_work_staffing")
+    .select(
+      "id,engineer_id,entity_type,entity_id,title,section_id,role_name,assigned_by_email,created_at,engineer:profiles!engineer_work_staffing_engineer_id_fkey(email,display_name)"
+    )
+    .order("created_at", { ascending: false });
+
+  if (session.role === "engineer") {
+    query = query.eq("engineer_id", session.userId);
+  }
+
+  const { data, error } = (await withTimeout(query.returns<StaffingRow[]>(), "Staffing assignment loading")) as SupabaseResponse<StaffingRow[]>;
+
+  if (error) throw error;
+  return mapStaffingRows(data || []);
+}
+
 export const useAccessStore = create<AccessState>((set, get) => ({
   session: null,
   engineers: [],
   selectedEngineerId: null,
   assignments: [],
+  staffing: [],
   engineerPermissions: defaultEngineerPermissions,
   progress: defaultSectionProgress,
   loading: false,
@@ -243,6 +268,7 @@ export const useAccessStore = create<AccessState>((set, get) => ({
       engineers: [],
       selectedEngineerId: null,
       assignments: [],
+      staffing: [],
       engineerPermissions: defaultEngineerPermissions,
       progress: defaultSectionProgress,
       loading: false,
@@ -256,6 +282,7 @@ export const useAccessStore = create<AccessState>((set, get) => ({
 
     const progressPromise = loadProgress();
     const assignmentsPromise = loadAssignments(session);
+    const staffingPromise = loadStaffing(session);
 
     if (session.role === "admin") {
       const engineers = await loadEngineers();
@@ -264,26 +291,33 @@ export const useAccessStore = create<AccessState>((set, get) => ({
           ? get().selectedEngineerId
           : engineers[0]?.id ?? null;
       const engineerPermissions = selectedEngineerId ? await loadPermissionsForUser(selectedEngineerId) : defaultEngineerPermissions;
-      const [progress, assignments] = await Promise.all([progressPromise, assignmentsPromise]);
+      const [progress, assignments, staffing] = await Promise.all([progressPromise, assignmentsPromise, staffingPromise]);
 
       set({
         engineers,
         selectedEngineerId,
         engineerPermissions,
         progress,
-        assignments
+        assignments,
+        staffing
       });
       return;
     }
 
-    const [engineerPermissions, progress, assignments] = await Promise.all([loadPermissionsForUser(session.userId), progressPromise, assignmentsPromise]);
+    const [engineerPermissions, progress, assignments, staffing] = await Promise.all([
+      loadPermissionsForUser(session.userId),
+      progressPromise,
+      assignmentsPromise,
+      staffingPromise
+    ]);
 
     set({
       engineers: [],
       selectedEngineerId: session.userId,
       engineerPermissions,
       progress,
-      assignments
+      assignments,
+      staffing
     });
   },
   setSelectedEngineerId: async (engineerId) => {
@@ -442,6 +476,105 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     } catch (error) {
       set({
         assignments: previous,
+        error: accessErrorMessage(error)
+      });
+    }
+  },
+  assignStaffingSeat: async ({ engineerId, entityType, entityId, roleName }) => {
+    const session = get().session;
+    const workItem = getAssignableWorkItem(entityType, entityId);
+
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can assign staffing seats." });
+      return;
+    }
+
+    if (!workItem) {
+      set({ error: "This work item is not available for staffing." });
+      return;
+    }
+
+    const existing = get().staffing.filter(
+      (item) => item.entityType === entityType && item.entityId === entityId && item.roleName === roleName
+    );
+    const duplicate = existing.some((item) => item.engineerId === engineerId);
+    const requiredSeats = getRequiredRoleSeatCount(entityType, entityId, roleName);
+
+    if (duplicate) {
+      set({ error: "That engineer is already assigned to this role seat." });
+      return;
+    }
+
+    if (requiredSeats > 0 && existing.length >= requiredSeats) {
+      set({ error: `${roleName} already has ${existing.length} assigned out of ${requiredSeats} needed. Remove a seat before assigning another engineer.` });
+      return;
+    }
+
+    const previous = get().staffing;
+    const engineer = get().engineers.find((item) => item.id === engineerId);
+    const optimisticStaffing: EngineerWorkStaffing = {
+      id: `${entityType}:${entityId}:${roleName}:${engineerId}`,
+      engineerId,
+      engineerEmail: engineer?.email ?? "Selected engineer",
+      engineerName: engineer?.displayName ?? engineer?.email ?? "Selected engineer",
+      entityType,
+      entityId,
+      title: workItem.title,
+      sectionId: workItem.sectionId,
+      roleName,
+      assignedBy: session.username,
+      createdAt: new Date().toISOString()
+    };
+
+    set({ staffing: [optimisticStaffing, ...previous], error: null });
+
+    try {
+      const { error } = (await withTimeout(
+        supabase.from("engineer_work_staffing").insert({
+          engineer_id: engineerId,
+          entity_type: entityType,
+          entity_id: entityId,
+          title: workItem.title,
+          section_id: workItem.sectionId,
+          role_name: roleName
+        }),
+        "Staffing seat update"
+      )) as SupabaseResponse<unknown>;
+
+      if (error) throw error;
+      await get().refreshDashboardData();
+    } catch (error) {
+      set({
+        staffing: previous,
+        error: accessErrorMessage(error)
+      });
+    }
+  },
+  removeStaffingSeat: async (staffingId) => {
+    const session = get().session;
+
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can remove staffing seats." });
+      return;
+    }
+
+    const previous = get().staffing;
+    set({
+      staffing: previous.filter((item) => item.id !== staffingId),
+      error: null
+    });
+
+    try {
+      const { error } = (await withTimeout(
+        supabase.from("engineer_work_staffing").delete().eq("id", staffingId),
+        "Staffing seat removal"
+      )) as SupabaseResponse<unknown>;
+
+      if (error) throw error;
+      await get().refreshDashboardData();
+    } catch (error) {
+      set({
+        staffing: previous,
         error: accessErrorMessage(error)
       });
     }

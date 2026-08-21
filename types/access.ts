@@ -84,3 +84,17 @@ export interface EngineerWorkAssignment {
   assignedBy: string;
   updatedAt: string;
 }
+
+export interface EngineerWorkStaffing {
+  id: string;
+  engineerId: string;
+  engineerEmail: string;
+  engineerName: string;
+  entityType: AssignmentEntityType;
+  entityId: string;
+  title: string;
+  sectionId: DashboardSectionId;
+  roleName: string;
+  assignedBy: string;
+  createdAt: string;
+}

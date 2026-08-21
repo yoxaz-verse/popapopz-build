@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Boxes, Clock3, IndianRupee, Layers3, Search, UsersRound } from "lucide-react";
+import { ArrowLeft, Boxes, Cable, CheckCircle2, Clock3, IndianRupee, Layers3, Search, UsersRound } from "lucide-react";
 import { componentBuildPlans } from "@/data/popapopz";
 import { EvidenceBadge, PhaseBadge } from "@/components/ui/status-badge";
+import { useAccessStore } from "@/store/access-store";
+import type { EngineerWorkAssignment, EngineerWorkStaffing } from "@/types/access";
 import type { ComponentBuildPlan, ModuleCategory, PhaseStatus } from "@/types/engineering";
 
 const categoryLabels: Record<ModuleCategory, string> = {
@@ -24,6 +26,14 @@ export function ComponentPlanningPage() {
   const [category, setCategory] = useState<"all" | ModuleCategory>("all");
   const [status, setStatus] = useState<"all" | PhaseStatus>("all");
   const [query, setQuery] = useState("");
+  const initialize = useAccessStore((state) => state.initialize);
+  const authChecked = useAccessStore((state) => state.authChecked);
+  const assignments = useAccessStore((state) => state.assignments);
+  const staffing = useAccessStore((state) => state.staffing);
+
+  useEffect(() => {
+    if (!authChecked) void initialize();
+  }, [authChecked, initialize]);
 
   const categories = useMemo(() => unique(componentBuildPlans.map((item) => item.category)), []);
   const statuses = useMemo(() => unique(componentBuildPlans.map((item) => item.status)), []);
@@ -41,10 +51,24 @@ export function ComponentPlanningPage() {
 
   const selected = componentBuildPlans.find((plan) => plan.id === selectedId) ?? filteredPlans[0] ?? componentBuildPlans[0];
   const totals = useMemo(() => summarize(componentBuildPlans), []);
+  const componentAssignments = useMemo(
+    () => assignments.filter((assignment) => assignment.entityType === "component_build_plan" || assignment.entityType === "machine_module"),
+    [assignments]
+  );
+  const componentStaffing = useMemo(
+    () => staffing.filter((item) => item.entityType === "component_build_plan" || item.entityType === "machine_module"),
+    [staffing]
+  );
+
+  function selectPlan(id: string) {
+    setSelectedId(id);
+    window.history.replaceState(null, "", `/components#component-${id}`);
+    window.setTimeout(() => document.getElementById("component-detail")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
 
   return (
     <main className="min-h-screen text-foreground">
-      <div className="mx-auto max-w-[1720px] space-y-4 p-4">
+      <div className="mx-auto max-w-[2100px] space-y-4 p-4 2xl:px-6">
         <header className="panel rounded-lg p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -64,7 +88,7 @@ export function ComponentPlanningPage() {
         <section className="grid gap-3 md:grid-cols-4">
           <SummaryCard icon={IndianRupee} label="Prototype Cost Range" value={`${formatInr(totals.costMin)} - ${formatInr(totals.costMax)}`} />
           <SummaryCard icon={Clock3} label="Longest Single Build" value={totals.longestDuration} />
-          <SummaryCard icon={UsersRound} label="Peak Planning Load" value={`${totals.people} role seats`} />
+          <SummaryCard icon={UsersRound} label="Staffing Filled" value={`${componentStaffing.length} / ${totals.people} seats`} />
           <SummaryCard icon={Boxes} label="Component Blocks" value={`${componentBuildPlans.length} modules`} />
         </section>
 
@@ -98,19 +122,26 @@ export function ComponentPlanningPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_560px] 2xl:grid-cols-[minmax(0,1fr)_640px]">
           <div className="space-y-4">
-            <AssemblyMap selectedId={selected.id} onSelect={setSelectedId} />
-            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            <AssemblyMap selectedId={selected.id} onSelect={selectPlan} />
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
               {filteredPlans.map((plan) => (
-                <ComponentCard key={plan.id} plan={plan} active={selected.id === plan.id} onSelect={() => setSelectedId(plan.id)} />
+                <ComponentCard
+                  key={plan.id}
+                  plan={plan}
+                  active={selected.id === plan.id}
+                  assignment={componentAssignments.find((assignment) => assignment.entityId === plan.id)}
+                  staffingCount={staffingForPlan(componentStaffing, plan).length}
+                  onSelect={() => selectPlan(plan.id)}
+                />
               ))}
             </div>
             {filteredPlans.length === 0 ? (
               <div className="panel rounded-lg p-8 text-center text-sm text-muted">No components match the current filters.</div>
             ) : null}
           </div>
-          <ComponentDetail plan={selected} />
+          <ComponentDetail plan={selected} assignment={componentAssignments.find((assignment) => assignment.entityId === selected.id)} staffing={staffingForPlan(componentStaffing, selected)} />
         </section>
       </div>
     </main>
@@ -159,10 +190,10 @@ function AssemblyMap({ selectedId, onSelect }: { selectedId: string; onSelect: (
         </div>
       </div>
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="relative min-h-[420px] overflow-hidden rounded-md border border-border/80 bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.11),transparent_35%),linear-gradient(180deg,#111827,#0b1120)] p-4">
+        <div className="relative min-h-[500px] overflow-hidden rounded-md border border-border/80 bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.11),transparent_35%),linear-gradient(180deg,#111827,#0b1120)] p-4">
           <div className="absolute left-1/2 top-8 h-[340px] w-[190px] -translate-x-1/2 rounded-md border border-slate-500/60 bg-slate-300/8" />
           <div className="absolute left-1/2 top-10 h-[330px] w-[150px] -translate-x-1/2 rounded-sm border-x-8 border-slate-500/70 border-b-[18px] border-b-slate-500/80" />
-          <div className="relative mx-auto grid h-[370px] max-w-[360px] grid-rows-[52px_56px_78px_70px_64px] gap-2 pt-7">
+          <div className="relative mx-auto grid h-[450px] max-w-[520px] grid-rows-[64px_70px_96px_86px_78px] gap-3 pt-8">
             <MapRow plans={orderedPlans.filter((plan) => ["controller", "software-hmi"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
             <MapRow plans={orderedPlans.filter((plan) => ["cup", "flavor", "boba"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
             <MapRow plans={orderedPlans.filter((plan) => ["prep", "nozzle-tree"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
@@ -214,9 +245,24 @@ function MapRow({ plans, selectedId, onSelect }: { plans: ComponentBuildPlan[]; 
   );
 }
 
-function ComponentCard({ plan, active, onSelect }: { plan: ComponentBuildPlan; active: boolean; onSelect: () => void }) {
+function ComponentCard({
+  plan,
+  active,
+  assignment,
+  staffingCount,
+  onSelect
+}: {
+  plan: ComponentBuildPlan;
+  active: boolean;
+  assignment?: EngineerWorkAssignment;
+  staffingCount: number;
+  onSelect: () => void;
+}) {
+  const requiredSeats = sumPeople(plan.peopleNeeded);
+  const total = costTotal(plan);
   return (
     <button
+      id={`component-${plan.id}`}
       className={`min-w-0 rounded-lg border p-4 text-left transition ${
         active ? "border-accent/70 bg-accent/[0.06]" : "border-border/80 bg-white/[0.03] hover:bg-white/[0.07]"
       }`}
@@ -232,9 +278,13 @@ function ComponentCard({ plan, active, onSelect }: { plan: ComponentBuildPlan; a
       </div>
       <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-300">{plan.purpose}</p>
       <div className="mt-4 grid grid-cols-3 gap-2">
-        <MiniMetric label="Cost" value={`${formatInr(plan.estimatedCostInr.min)}-${formatShortInr(plan.estimatedCostInr.max)}`} />
+        <MiniMetric label="Cost" value={`${formatInr(total.min)}-${formatShortInr(total.max)}`} />
         <MiniMetric label="Duration" value={plan.buildDuration} />
-        <MiniMetric label="People" value={`${sumPeople(plan.peopleNeeded)}`} />
+        <MiniMetric label="People" value={`${staffingCount}/${requiredSeats}`} />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+        <span className="truncate">Owner: {assignment?.engineerEmail ?? "Unassigned"}</span>
+        <span>{plan.subComponents?.length ?? 0} parts</span>
       </div>
     </button>
   );
@@ -249,9 +299,11 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ComponentDetail({ plan }: { plan: ComponentBuildPlan }) {
+function ComponentDetail({ plan, assignment, staffing }: { plan: ComponentBuildPlan; assignment?: EngineerWorkAssignment; staffing: EngineerWorkStaffing[] }) {
+  const total = costTotal(plan);
+  const requiredSeats = sumPeople(plan.peopleNeeded);
   return (
-    <aside className="panel rounded-lg p-5 xl:sticky xl:top-4">
+    <aside id="component-detail" className="panel rounded-lg p-5 xl:sticky xl:top-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="technical-label text-accent">Selected Component</p>
@@ -263,31 +315,158 @@ function ComponentDetail({ plan }: { plan: ComponentBuildPlan }) {
         </div>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
-        <MiniMetric label="INR Estimate" value={`${formatInr(plan.estimatedCostInr.min)} - ${formatInr(plan.estimatedCostInr.max)}`} />
+        <MiniMetric label="INR Estimate" value={`${formatInr(total.min)} - ${formatInr(total.max)}`} />
         <MiniMetric label="Duration" value={plan.buildDuration} />
-        <MiniMetric label="People" value={`${sumPeople(plan.peopleNeeded)} seats`} />
+        <MiniMetric label="People" value={`${staffing.length} / ${requiredSeats} assigned`} />
       </div>
       <div className="mt-5 space-y-5">
+        <OwnerBlock assignment={assignment} />
+        <StaffingBlock plan={plan} staffing={staffing} />
+        <CostBreakdown plan={plan} />
+        <ConnectionBlock plan={plan} />
+        <BuildStructureBlock plan={plan} />
+        <InfoBlock title="Sub-components" items={plan.subComponents ?? []} />
         <InfoBlock title="Prototype Deliverable" items={[plan.prototypeDeliverable]} />
         <InfoBlock title="Assembly Type" items={[plan.assemblyType]} />
-        <PeopleBlock people={plan.peopleNeeded} />
         <InfoBlock title="Dependencies" items={plan.dependencies} />
-        <NumberedBlock title="Creation Steps" items={plan.creationSteps} />
+        <InfoBlock title="Materials" items={plan.materials ?? []} />
+        <InfoBlock title="Tools" items={plan.tools ?? []} />
+        <InfoBlock title="Risks" items={plan.risks ?? []} />
+        <InfoBlock title="Validation Checks" items={plan.validationChecks ?? []} />
         <InfoBlock title="Fitment Notes" items={plan.fitmentNotes} />
       </div>
     </aside>
   );
 }
 
-function PeopleBlock({ people }: { people: ComponentBuildPlan["peopleNeeded"] }) {
+function OwnerBlock({ assignment }: { assignment?: EngineerWorkAssignment }) {
+  return (
+    <div className="rounded-md border border-border/80 bg-white/[0.03] p-3">
+      <h3 className="technical-label text-muted">Responsible Owner</h3>
+      <p className="mt-2 text-sm font-semibold">{assignment?.engineerEmail ?? "No owner assigned yet"}</p>
+      <p className="mt-1 text-xs text-muted">{assignment ? `${assignment.status} · ${assignment.progressPercent}% complete` : "Assign an engineer from the admin dashboard."}</p>
+    </div>
+  );
+}
+
+function StaffingBlock({ plan, staffing }: { plan: ComponentBuildPlan; staffing: EngineerWorkStaffing[] }) {
   return (
     <div>
-      <h3 className="technical-label text-muted">People Needed</h3>
+      <h3 className="technical-label text-muted">People Assigned / Needed</h3>
       <div className="mt-2 grid gap-2">
-        {people.map((item) => (
+        {plan.peopleNeeded.map((item) => {
+          const assigned = staffing.filter((staff) => staff.roleName === item.role);
+          return (
           <div className="flex items-center justify-between rounded-md border border-border/80 bg-white/[0.03] px-3 py-2 text-sm" key={item.role}>
-            <span>{item.role}</span>
-            <span className="font-mono text-accent">{item.count}</span>
+            <div className="min-w-0">
+              <span>{item.role}</span>
+              <p className="mt-1 truncate text-xs text-muted">{assigned.map((staff) => staff.engineerEmail).join(", ") || "No engineer assigned"}</p>
+            </div>
+            <span className={`font-mono ${assigned.length >= item.count ? "text-success" : "text-accent"}`}>
+              {assigned.length}/{item.count}
+            </span>
+          </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CostBreakdown({ plan }: { plan: ComponentBuildPlan }) {
+  const rows = plan.costItems ?? [];
+  const total = costTotal(plan);
+
+  return (
+    <div>
+      <h3 className="technical-label text-muted">Specific Cost Breakdown</h3>
+      <div className="mt-2 overflow-hidden rounded-md border border-border/80">
+        <table className="w-full text-left text-xs">
+          <thead className="technical-label bg-white/[0.04] text-muted">
+            <tr>
+              <th className="px-3 py-2">Item</th>
+              <th className="px-3 py-2">Qty</th>
+              <th className="px-3 py-2">Range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr className="border-t border-border/70" key={`${row.label}-${row.category}`}>
+                <td className="px-3 py-2">
+                  <p className="font-medium text-slate-100">{row.label}</p>
+                  <p className="mt-1 text-muted">{row.category} · {row.notes}</p>
+                </td>
+                <td className="px-3 py-2 font-mono text-muted">{row.quantity}</td>
+                <td className="px-3 py-2 font-mono text-accent">
+                  {formatInr(row.unitCostInr.min * row.quantity)} - {formatInr(row.unitCostInr.max * row.quantity)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-accent/30 bg-accent/10">
+              <td className="px-3 py-2 font-semibold" colSpan={2}>Calculated total</td>
+              <td className="px-3 py-2 font-mono text-cyan-100">{formatInr(total.min)} - {formatInr(total.max)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionBlock({ plan }: { plan: ComponentBuildPlan }) {
+  return (
+    <div>
+      <h3 className="technical-label text-muted">How This Connects</h3>
+      <div className="mt-2 grid gap-2">
+        {(plan.connections ?? []).map((connection) => (
+          <div className="rounded-md border border-border/80 bg-white/[0.03] p-3 text-sm" key={`${connection.type}-${connection.connectsTo}`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex items-center gap-2 font-medium">
+                <Cable className="h-4 w-4 text-accent" />
+                {connection.connectsTo}
+              </span>
+              <span className="technical-label text-muted">{connection.type}</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted">{connection.details}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BuildStructureBlock({ plan }: { plan: ComponentBuildPlan }) {
+  const structure = plan.buildStructure;
+  if (!structure) return <NumberedBlock title="Creation Steps" items={plan.creationSteps} />;
+
+  const groups = [
+    ["Preparation", structure.preparation],
+    ["Fabrication / Procurement", structure.fabricationProcurement],
+    ["Assembly", structure.assembly],
+    ["Integration", structure.integration],
+    ["Validation", structure.validation]
+  ] as const;
+
+  return (
+    <div>
+      <h3 className="technical-label text-muted">Build Structure</h3>
+      <div className="mt-2 grid gap-2">
+        {groups.map(([label, items], index) => (
+          <div className="rounded-md border border-border/80 bg-white/[0.03] p-3" key={label}>
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-accent/40 bg-black/30 font-mono text-[11px] text-accent">{index + 1}</span>
+              <p className="text-sm font-semibold">{label}</p>
+            </div>
+            <ul className="mt-2 space-y-1 text-xs leading-5 text-muted">
+              {items.map((item) => (
+                <li className="flex gap-2" key={item}>
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         ))}
       </div>
@@ -329,11 +508,26 @@ function NumberedBlock({ title, items }: { title: string; items: string[] }) {
 
 function summarize(plans: ComponentBuildPlan[]) {
   return {
-    costMin: plans.reduce((total, plan) => total + plan.estimatedCostInr.min, 0),
-    costMax: plans.reduce((total, plan) => total + plan.estimatedCostInr.max, 0),
-    people: plans.reduce((max, plan) => Math.max(max, sumPeople(plan.peopleNeeded)), 0),
+    costMin: plans.reduce((total, plan) => total + costTotal(plan).min, 0),
+    costMax: plans.reduce((total, plan) => total + costTotal(plan).max, 0),
+    people: plans.reduce((total, plan) => total + sumPeople(plan.peopleNeeded), 0),
     longestDuration: plans.reduce((longest, plan) => Math.max(longest, extractMaxWeeks(plan.buildDuration)), 0) + " weeks"
   };
+}
+
+function staffingForPlan(staffing: EngineerWorkStaffing[], plan: ComponentBuildPlan) {
+  return staffing.filter((item) => item.entityId === plan.id || item.entityId === plan.sourceModuleId);
+}
+
+function costTotal(plan: ComponentBuildPlan) {
+  if (!plan.costItems?.length) return plan.estimatedCostInr;
+  return plan.costItems.reduce(
+    (total, item) => ({
+      min: total.min + item.unitCostInr.min * item.quantity,
+      max: total.max + item.unitCostInr.max * item.quantity
+    }),
+    { min: 0, max: 0 }
+  );
 }
 
 function sumPeople(people: ComponentBuildPlan["peopleNeeded"]) {

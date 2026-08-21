@@ -46,3 +46,13 @@ export const assignableWorkItems: AssignableWorkItem[] = [
 export function getAssignableWorkItem(entityType: AssignmentEntityType, entityId: string) {
   return assignableWorkItems.find((workItem) => workItem.entityType === entityType && workItem.entityId === entityId) ?? null;
 }
+
+export function getComponentWorkPlan(entityType: AssignmentEntityType, entityId: string) {
+  if (entityType !== "component_build_plan" && entityType !== "machine_module") return null;
+  return componentBuildPlans.find((plan) => plan.id === entityId || plan.sourceModuleId === entityId) ?? null;
+}
+
+export function getRequiredRoleSeatCount(entityType: AssignmentEntityType, entityId: string, roleName: string) {
+  const plan = getComponentWorkPlan(entityType, entityId);
+  return plan?.peopleNeeded.find((item) => item.role === roleName)?.count ?? 0;
+}

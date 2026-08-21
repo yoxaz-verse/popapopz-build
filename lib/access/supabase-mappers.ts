@@ -5,6 +5,7 @@ import type {
   DashboardSectionPermission,
   EngineerProfile,
   EngineerWorkAssignment,
+  EngineerWorkStaffing,
   SectionProgress,
   SectionProgressStatus,
   UserRole
@@ -44,6 +45,22 @@ export interface AssignmentRow {
   note: string | null;
   assigned_by_email: string | null;
   updated_at: string;
+  engineer?: {
+    email: string | null;
+    display_name: string | null;
+  } | null;
+}
+
+export interface StaffingRow {
+  id: string;
+  engineer_id: string;
+  entity_type: AssignmentEntityType;
+  entity_id: string;
+  title: string;
+  section_id: DashboardSectionId;
+  role_name: string;
+  assigned_by_email: string | null;
+  created_at: string;
   engineer?: {
     email: string | null;
     display_name: string | null;
@@ -109,5 +126,21 @@ export function mapAssignmentRows(rows: AssignmentRow[]): EngineerWorkAssignment
     note: row.note || "",
     assignedBy: row.assigned_by_email || "Unknown user",
     updatedAt: row.updated_at
+  }));
+}
+
+export function mapStaffingRows(rows: StaffingRow[]): EngineerWorkStaffing[] {
+  return rows.map((row) => ({
+    id: row.id,
+    engineerId: row.engineer_id,
+    engineerEmail: row.engineer?.email || "Unknown engineer",
+    engineerName: row.engineer?.display_name || row.engineer?.email || "Unknown engineer",
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    title: row.title,
+    sectionId: row.section_id,
+    roleName: row.role_name,
+    assignedBy: row.assigned_by_email || "Unknown user",
+    createdAt: row.created_at
   }));
 }

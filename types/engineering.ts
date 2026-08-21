@@ -36,11 +36,42 @@ export interface PeopleRequirement {
   count: number;
 }
 
+export interface ComponentCostItem {
+  label: string;
+  category: "fabrication" | "hardware" | "electronics" | "fluid" | "software" | "validation" | "assembly";
+  quantity: number;
+  unitCostInr: CostRangeInr;
+  notes: string;
+}
+
+export interface ComponentConnection {
+  type: "physical" | "fluid" | "electrical" | "control" | "service";
+  label: string;
+  connectsTo: string;
+  details: string;
+}
+
+export interface ComponentBuildStructure {
+  preparation: string[];
+  fabricationProcurement: string[];
+  assembly: string[];
+  integration: string[];
+  validation: string[];
+}
+
 export interface ComponentPlanning {
   estimatedCostInr: CostRangeInr;
+  costItems?: ComponentCostItem[];
   buildDuration: string;
   peopleNeeded: PeopleRequirement[];
   assemblyType: string;
+  subComponents?: string[];
+  connections?: ComponentConnection[];
+  materials?: string[];
+  tools?: string[];
+  risks?: string[];
+  validationChecks?: string[];
+  buildStructure?: ComponentBuildStructure;
   dependencies: string[];
   prototypeDeliverable: string;
   creationSteps: string[];

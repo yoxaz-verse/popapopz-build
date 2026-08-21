@@ -86,6 +86,20 @@ create table if not exists public.engineer_work_assignments (
   constraint engineer_work_assignments_single_owner unique (entity_type, entity_id)
 );
 
+create table if not exists public.engineer_work_staffing (
+  id uuid primary key default gen_random_uuid(),
+  engineer_id uuid not null references public.profiles(id) on delete cascade,
+  entity_type public.assignment_entity_type not null,
+  entity_id text not null,
+  title text not null,
+  section_id public.dashboard_section_id not null,
+  role_name text not null,
+  assigned_by uuid references public.profiles(id) on delete set null,
+  assigned_by_email text,
+  created_at timestamptz not null default now(),
+  constraint engineer_work_staffing_unique_engineer_role unique (engineer_id, entity_type, entity_id, role_name)
+);
+
 create or replace function public.profile_role_for_email(email_value text)
 returns public.app_user_role
 language sql
@@ -189,6 +203,25 @@ begin
 end;
 $$;
 
+create or replace function public.set_staffing_metadata()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_email text;
+begin
+  select email into current_email
+  from public.profiles
+  where id = auth.uid();
+
+  new.assigned_by = auth.uid();
+  new.assigned_by_email = current_email;
+  return new;
+end;
+$$;
+
 create or replace function public.ensure_default_engineer_permissions(target_user_id uuid)
 returns void
 language sql
@@ -286,6 +319,11 @@ create trigger set_engineer_work_assignment_metadata
 before insert or update on public.engineer_work_assignments
 for each row execute function public.set_assignment_metadata();
 
+drop trigger if exists set_engineer_work_staffing_metadata on public.engineer_work_staffing;
+create trigger set_engineer_work_staffing_metadata
+before insert on public.engineer_work_staffing
+for each row execute function public.set_staffing_metadata();
+
 insert into public.profiles (id, email, role, display_name)
 select id, lower(email), public.profile_role_for_email(email), public.profile_name_for_email(email)
 from auth.users
@@ -318,6 +356,7 @@ alter table public.profiles enable row level security;
 alter table public.engineer_section_permissions enable row level security;
 alter table public.section_progress enable row level security;
 alter table public.engineer_work_assignments enable row level security;
+alter table public.engineer_work_staffing enable row level security;
 
 drop policy if exists "Users can view own profile and admins can view all" on public.profiles;
 create policy "Users can view own profile and admins can view all"
@@ -421,6 +460,21 @@ to authenticated
 using (engineer_id = auth.uid())
 with check (engineer_id = auth.uid());
 
+drop policy if exists "Admins can view all staffing and engineers can view own staffing" on public.engineer_work_staffing;
+create policy "Admins can view all staffing and engineers can view own staffing"
+on public.engineer_work_staffing
+for select
+to authenticated
+using (public.is_admin() or engineer_id = auth.uid());
+
+drop policy if exists "Admins can manage staffing" on public.engineer_work_staffing;
+create policy "Admins can manage staffing"
+on public.engineer_work_staffing
+for all
+to authenticated
+using (public.is_admin())
+with check (public.is_admin());
+
 create or replace view public.section_progress_with_user
 with (security_invoker = true)
 as
@@ -439,4 +493,5 @@ grant select, update on public.profiles to authenticated;
 grant select, insert, update, delete on public.engineer_section_permissions to authenticated;
 grant select, insert, update on public.section_progress to authenticated;
 grant select, insert, update, delete on public.engineer_work_assignments to authenticated;
+grant select, insert, delete on public.engineer_work_staffing to authenticated;
 grant select on public.section_progress_with_user to authenticated;

@@ -137,6 +137,100 @@ const planningByModule: Record<string, ComponentPlanning> = {
   }
 };
 
+function createCostItems(plan: ComponentPlanning) {
+  const min = plan.estimatedCostInr.min;
+  const max = plan.estimatedCostInr.max;
+  return [
+    {
+      label: "Core fabricated parts",
+      category: "fabrication" as const,
+      quantity: 1,
+      unitCostInr: { min: Math.round(min * 0.28), max: Math.round(max * 0.3) },
+      notes: "Frame brackets, cassette body, panels, holders, and custom machined pieces for this system."
+    },
+    {
+      label: "Purchased functional hardware",
+      category: "hardware" as const,
+      quantity: 1,
+      unitCostInr: { min: Math.round(min * 0.27), max: Math.round(max * 0.28) },
+      notes: "Pumps, valves, motors, rails, locks, cartridges, fittings, or commercial modules depending on the system."
+    },
+    {
+      label: "Sensors, wiring, controls",
+      category: "electronics" as const,
+      quantity: 1,
+      unitCostInr: { min: Math.round(min * 0.18), max: Math.round(max * 0.2) },
+      notes: "Sensors, harness branches, terminals, actuator wiring, and controller I/O allowance."
+    },
+    {
+      label: "Assembly, test, and rework allowance",
+      category: "validation" as const,
+      quantity: 1,
+      unitCostInr: { min: Math.round(min * 0.17), max: Math.round(max * 0.17) },
+      notes: "Prototype assembly time, calibration, bench testing, rework, and failed trial allowance."
+    },
+    {
+      label: "Consumables and integration buffer",
+      category: "assembly" as const,
+      quantity: 1,
+      unitCostInr: { min: Math.max(0, min - Math.round(min * 0.9)), max: Math.max(0, max - Math.round(max * 0.95)) },
+      notes: "Fasteners, seals, tubing, labels, mounting hardware, and integration contingency."
+    }
+  ];
+}
+
+function enrichPlanning(plan: ComponentPlanning, context: { id: string; name: string; inputs?: string[]; outputs?: string[]; sensors?: string[]; actuators?: string[]; risks?: string[] }) {
+  const subComponents = [
+    `${context.name} mounting interface`,
+    `${context.name} service cassette`,
+    ...(context.sensors ?? []).slice(0, 3),
+    ...(context.actuators ?? []).slice(0, 3)
+  ].filter(Boolean);
+
+  return {
+    ...plan,
+    costItems: plan.costItems ?? createCostItems(plan),
+    subComponents: plan.subComponents ?? subComponents,
+    connections:
+      plan.connections ??
+      [
+        ...(context.inputs ?? []).slice(0, 3).map((input) => ({
+          type: "physical" as const,
+          label: "Input connection",
+          connectsTo: input,
+          details: `Receives ${input.toLowerCase()} into the ${context.name.toLowerCase()} package.`
+        })),
+        ...(context.outputs ?? []).slice(0, 3).map((output) => ({
+          type: "service" as const,
+          label: "Output connection",
+          connectsTo: output,
+          details: `Hands off ${output.toLowerCase()} to the next machine system.`
+        })),
+        ...plan.dependencies.slice(0, 3).map((dependency) => ({
+          type: "control" as const,
+          label: "Dependency",
+          connectsTo: dependency,
+          details: `Must be available or frozen before ${context.name.toLowerCase()} can be finalized.`
+        }))
+      ],
+    materials: plan.materials ?? ["Prototype-grade sheet/plate stock", "Food-safe seals where product-contact exists", "Stainless fasteners", "Labeled service connectors"],
+    tools: plan.tools ?? ["CAD layout", "Basic fabrication tools", "Electrical/fluid test kit", "Bench validation fixture"],
+    risks: plan.risks ?? context.risks ?? ["Supplier quote variance", "Service clearance conflict", "Prototype rework after fitment test"],
+    validationChecks:
+      plan.validationChecks ??
+      ["Fit within allocated bay", "Service removal without disturbing adjacent systems", "Leak/jam/fault behavior checked", "Operator access confirmed"],
+    buildStructure:
+      plan.buildStructure ??
+      {
+        preparation: plan.dependencies.slice(0, 4),
+        fabricationProcurement: plan.creationSteps.slice(0, 2),
+        assembly: plan.creationSteps.slice(2, 4),
+        integration: plan.fitmentNotes,
+        validation: plan.validationChecks ?? ["Bench test", "Machine fitment check", "Serviceability review"]
+      }
+  };
+}
+
 export const machine: Machine = {
   id: "popapopz-prototype-001",
   name: "POPAPOPZ Smart Beverage Dispensing System",
@@ -418,19 +512,30 @@ export const modules: MachineModule[] = [
 ];
 
 export const componentBuildPlans: ComponentBuildPlan[] = [
-  ...modules.map((module) => ({
-    id: module.id,
-    name: module.name,
-    shortName: module.shortName,
-    category: module.category,
-    status: module.status,
-    evidence: module.evidence,
-    purpose: module.purpose,
-    color: module.color,
-    sourceModuleId: module.id,
-    ...(module.planning ?? planningByModule[module.id])
-  })),
-  {
+  ...modules.map((module) => {
+    const planning = enrichPlanning(module.planning ?? planningByModule[module.id], {
+      id: module.id,
+      name: module.name,
+      inputs: module.inputs,
+      outputs: module.outputs,
+      sensors: module.sensors,
+      actuators: module.actuators,
+      risks: module.engineeringRisks
+    });
+    return {
+      id: module.id,
+      name: module.name,
+      shortName: module.shortName,
+      category: module.category,
+      status: module.status,
+      evidence: module.evidence,
+      purpose: module.purpose,
+      color: module.color,
+      sourceModuleId: module.id,
+      ...planning
+    };
+  }),
+  enrichComponentBuildPlan({
     id: "frame",
     name: "Frame and Enclosure",
     shortName: "Frame",
@@ -450,8 +555,8 @@ export const componentBuildPlans: ComponentBuildPlan[] = [
     prototypeDeliverable: "Powder-coated steel or aluminum prototype frame with indexed rails and removable panels.",
     creationSteps: ["Freeze bay coordinates", "Fabricate base frame", "Add vertical rails", "Fit service panels", "Check module slide-in clearance"],
     fitmentNotes: ["All modules register to the frame first.", "Use repeatable datum points so later parts fit like snapped blocks."]
-  },
-  {
+  }),
+  enrichComponentBuildPlan({
     id: "nozzle-tree",
     name: "Nozzle Tree and Dispense Manifold",
     shortName: "Nozzle Tree",
@@ -471,8 +576,8 @@ export const componentBuildPlans: ComponentBuildPlan[] = [
     prototypeDeliverable: "Removable manifold with separated outlets, rinse port, splash target, and quick-disconnect tubing.",
     creationSteps: ["Define outlet spacing", "Machine manifold mount", "Route quick-disconnects", "Add rinse nozzle", "Validate splash pattern"],
     fitmentNotes: ["Mount above the cup centerline.", "Keep service removal possible without dismantling the prep chamber."]
-  },
-  {
+  }),
+  enrichComponentBuildPlan({
     id: "sensors-actuators",
     name: "Sensors and Actuators Harness",
     shortName: "Sensors",
@@ -493,8 +598,8 @@ export const componentBuildPlans: ComponentBuildPlan[] = [
     prototypeDeliverable: "Labeled harness set with keyed connectors, sensor brackets, and actuator test map.",
     creationSteps: ["Create I/O list", "Select connector families", "Build harness branches", "Label connectors", "Run continuity and I/O test"],
     fitmentNotes: ["Use keyed plugs per module.", "Leave service loops for slide-out modules and door movement."]
-  },
-  {
+  }),
+  enrichComponentBuildPlan({
     id: "software-hmi",
     name: "Software and Customer HMI",
     shortName: "Software",
@@ -515,8 +620,21 @@ export const componentBuildPlans: ComponentBuildPlan[] = [
     prototypeDeliverable: "Touchscreen order queue demo, dispense state machine, service screens, and fault telemetry.",
     creationSteps: ["Map customer flow", "Build HMI screens", "Implement recipe/state machine", "Add service mode", "Test fault handling"],
     fitmentNotes: ["Keep customer screen at chest level.", "Separate customer mode from technician/service mode."]
-  }
+  })
 ];
+
+function enrichComponentBuildPlan(plan: ComponentBuildPlan): ComponentBuildPlan {
+  return {
+    ...plan,
+    ...enrichPlanning(plan, {
+      id: plan.id,
+      name: plan.name,
+      inputs: plan.dependencies,
+      outputs: [plan.prototypeDeliverable],
+      risks: ["Unknown supplier lead time", "Prototype fitment iteration", "Integration tolerance stack-up"]
+    })
+  };
+}
 
 export const phases: EngineeringPhase[] = [
   { id: "01", title: "Product Requirements", status: "In Progress", progress: 80, objective: "Define machine scope, throughput targets, user flows, and validation criteria.", validation: "Requirements review with risk and assumption register." },

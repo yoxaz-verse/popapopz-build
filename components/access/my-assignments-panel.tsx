@@ -10,6 +10,7 @@ const assignmentStatuses: WorkAssignmentStatus[] = ["Assigned", "In Progress", "
 export function MyAssignmentsPanel() {
   const session = useAccessStore((state) => state.session);
   const assignments = useAccessStore((state) => state.assignments);
+  const staffing = useAccessStore((state) => state.staffing);
   const updateWorkAssignment = useAccessStore((state) => state.updateWorkAssignment);
 
   if (session?.role !== "engineer") return null;
@@ -53,6 +54,22 @@ export function MyAssignmentsPanel() {
         </div>
         <ClipboardCheck className="h-5 w-5 text-accent" />
       </div>
+
+      {staffing.length > 0 ? (
+        <div className="mt-4 rounded-md border border-border/80 bg-black/20 p-3">
+          <p className="technical-label text-muted">Staffing Participation</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {staffing.map((seat) => (
+              <div className="rounded-md border border-border/70 bg-white/[0.03] p-3 text-sm" key={seat.id}>
+                <p className="font-semibold">{seat.title}</p>
+                <p className="mt-1 text-xs text-muted">
+                  {seat.roleName} · {seat.entityType.replaceAll("_", " ")}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3 xl:grid-cols-2">
         {assignments.length === 0 ? (
