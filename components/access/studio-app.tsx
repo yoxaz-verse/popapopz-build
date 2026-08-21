@@ -7,6 +7,7 @@ import { LogOut } from "lucide-react";
 import { ArchitectureDiagram } from "@/components/diagrams/architecture-diagram";
 import { ProjectDashboard } from "@/components/dashboard/project-dashboard";
 import { AdminAssignmentsPanel } from "@/components/access/admin-assignments-panel";
+import { AdminEngineersPanel } from "@/components/access/admin-engineers-panel";
 import { AdminPermissionsPanel } from "@/components/access/admin-permissions-panel";
 import { MyAssignmentsPanel } from "@/components/access/my-assignments-panel";
 import { SectionGate } from "@/components/access/section-gate";
@@ -128,6 +129,7 @@ export function StudioApp() {
 
           <div className="mx-auto max-w-[1720px] space-y-4 p-4">
             {error ? <div className="rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-red-100">{error}</div> : null}
+            <AdminEngineersPanel />
             <AdminAssignmentsPanel />
             <AdminPermissionsPanel />
             <MyAssignmentsPanel />

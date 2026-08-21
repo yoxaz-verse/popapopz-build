@@ -36,6 +36,8 @@ export interface EngineerProfile {
   id: string;
   email: string;
   displayName: string;
+  active: boolean;
+  deactivatedAt?: string | null;
 }
 
 export interface DashboardSectionPermission {

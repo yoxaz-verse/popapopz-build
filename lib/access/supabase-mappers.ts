@@ -16,6 +16,8 @@ export interface ProfileRow {
   email: string;
   role: UserRole;
   display_name: string | null;
+  active: boolean | null;
+  deactivated_at?: string | null;
 }
 
 export interface PermissionRow {
@@ -48,6 +50,7 @@ export interface AssignmentRow {
   engineer?: {
     email: string | null;
     display_name: string | null;
+    active?: boolean | null;
   } | null;
 }
 
@@ -64,6 +67,7 @@ export interface StaffingRow {
   engineer?: {
     email: string | null;
     display_name: string | null;
+    active?: boolean | null;
   } | null;
 }
 
@@ -80,7 +84,9 @@ export function mapProfileToEngineer(profile: ProfileRow): EngineerProfile {
   return {
     id: profile.id,
     email: profile.email,
-    displayName: profile.display_name || profile.email
+    displayName: profile.display_name || profile.email,
+    active: profile.active ?? true,
+    deactivatedAt: profile.deactivated_at ?? null
   };
 }
 
@@ -115,7 +121,7 @@ export function mapAssignmentRows(rows: AssignmentRow[]): EngineerWorkAssignment
   return rows.map((row) => ({
     id: row.id,
     engineerId: row.engineer_id,
-    engineerEmail: row.engineer?.email || "Unknown engineer",
+    engineerEmail: row.engineer?.email ? `${row.engineer.email}${row.engineer.active === false ? " (inactive)" : ""}` : "Unknown engineer",
     engineerName: row.engineer?.display_name || row.engineer?.email || "Unknown engineer",
     entityType: row.entity_type,
     entityId: row.entity_id,
@@ -133,7 +139,7 @@ export function mapStaffingRows(rows: StaffingRow[]): EngineerWorkStaffing[] {
   return rows.map((row) => ({
     id: row.id,
     engineerId: row.engineer_id,
-    engineerEmail: row.engineer?.email || "Unknown engineer",
+    engineerEmail: row.engineer?.email ? `${row.engineer.email}${row.engineer.active === false ? " (inactive)" : ""}` : "Unknown engineer",
     engineerName: row.engineer?.display_name || row.engineer?.email || "Unknown engineer",
     entityType: row.entity_type,
     entityId: row.entity_id,

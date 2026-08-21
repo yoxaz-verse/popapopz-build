@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, UserPlus, UserRoundCheck, X } from "lucide-react";
 import { assignableWorkItems, getComponentWorkPlan } from "@/lib/access/assignable-work";
 import { useAccessStore } from "@/store/access-store";
@@ -31,6 +31,16 @@ export function AdminAssignmentsPanel() {
   const [workItemSelection, setWorkItemSelection] = useState(() =>
     assignableWorkItems[0] ? workItemValue(assignableWorkItems[0].entityType, assignableWorkItems[0].entityId) : ""
   );
+  const activeEngineers = useMemo(() => engineers.filter((engineer) => engineer.active), [engineers]);
+
+  useEffect(() => {
+    if (engineerId && !activeEngineers.some((engineer) => engineer.id === engineerId)) {
+      setEngineerId(activeEngineers[0]?.id ?? "");
+    }
+    if (staffingEngineerId && !activeEngineers.some((engineer) => engineer.id === staffingEngineerId)) {
+      setStaffingEngineerId(activeEngineers[0]?.id ?? "");
+    }
+  }, [activeEngineers, engineerId, staffingEngineerId]);
 
   const assignmentsByItem = useMemo(
     () => new Map(assignments.map((assignment) => [workItemValue(assignment.entityType, assignment.entityId), assignment])),
@@ -56,13 +66,14 @@ export function AdminAssignmentsPanel() {
   if (session?.role !== "admin") return null;
 
   function handleAssign() {
-    const targetEngineerId = engineerId || selectedEngineerId || engineers[0]?.id || "";
+    const targetEngineerId = engineerId || (activeEngineers.some((engineer) => engineer.id === selectedEngineerId) ? selectedEngineerId : null) || activeEngineers[0]?.id || "";
     const { entityType, entityId } = parseWorkItemValue(workItemSelection);
     void assignWorkItem({ engineerId: targetEngineerId, entityType, entityId });
   }
 
   function handleAssignStaffing() {
-    const targetEngineerId = staffingEngineerId || selectedEngineerId || engineers[0]?.id || "";
+    const targetEngineerId =
+      staffingEngineerId || (activeEngineers.some((engineer) => engineer.id === selectedEngineerId) ? selectedEngineerId : null) || activeEngineers[0]?.id || "";
     const { entityType, entityId } = parseWorkItemValue(workItemSelection);
     const nextRoleName = roleName || selectedWorkItem?.peopleNeeded[0]?.role || "";
     void assignStaffingSeat({ engineerId: targetEngineerId, entityType, entityId, roleName: nextRoleName });
@@ -78,9 +89,9 @@ export function AdminAssignmentsPanel() {
         <ClipboardList className="h-5 w-5 text-accent" />
       </div>
 
-      {engineers.length === 0 ? (
+      {activeEngineers.length === 0 ? (
         <p className="mt-4 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm leading-6 text-yellow-100">
-          Create engineer Auth users and profiles before assigning specific work.
+          Create or reactivate an engineer before assigning specific work.
         </p>
       ) : (
         <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(220px,320px)_minmax(0,1fr)_auto]">
@@ -89,9 +100,9 @@ export function AdminAssignmentsPanel() {
             <select
               className="mt-2 w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-accent"
               onChange={(event) => setEngineerId(event.target.value)}
-              value={engineerId || selectedEngineerId || engineers[0]?.id || ""}
+              value={engineerId || (activeEngineers.some((engineer) => engineer.id === selectedEngineerId) ? selectedEngineerId : "") || activeEngineers[0]?.id || ""}
             >
-              {engineers.map((engineer) => (
+              {activeEngineers.map((engineer) => (
                 <option key={engineer.id} value={engineer.id}>
                   {engineer.displayName} - {engineer.email}
                 </option>
@@ -122,7 +133,7 @@ export function AdminAssignmentsPanel() {
           </label>
           <button
             className="inline-flex items-center justify-center gap-2 self-end rounded-md border border-accent/60 bg-accent/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-accent/25 disabled:opacity-60"
-            disabled={!workItemSelection || engineers.length === 0}
+            disabled={!workItemSelection || activeEngineers.length === 0}
             onClick={handleAssign}
             type="button"
           >
@@ -132,7 +143,7 @@ export function AdminAssignmentsPanel() {
         </div>
       )}
 
-      {selectedWorkItem && engineers.length > 0 ? (
+      {selectedWorkItem && activeEngineers.length > 0 ? (
         <div className="mt-4 rounded-md border border-border/80 bg-black/20 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -149,9 +160,9 @@ export function AdminAssignmentsPanel() {
               <select
                 className="mt-2 w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm outline-none transition focus:border-accent"
                 onChange={(event) => setStaffingEngineerId(event.target.value)}
-                value={staffingEngineerId || selectedEngineerId || engineers[0]?.id || ""}
+                value={staffingEngineerId || (activeEngineers.some((engineer) => engineer.id === selectedEngineerId) ? selectedEngineerId : "") || activeEngineers[0]?.id || ""}
               >
-                {engineers.map((engineer) => (
+                {activeEngineers.map((engineer) => (
                   <option key={engineer.id} value={engineer.id}>
                     {engineer.displayName} - {engineer.email}
                   </option>

@@ -1,9 +1,10 @@
 "use client";
 
 import { createClient } from "@supabase/supabase-js";
+import { normalizeSupabaseKey, normalizeSupabaseUrl } from "@/lib/supabase/env";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const supabaseUrl = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const supabasePublishableKey = normalizeSupabaseKey(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 
 export const supabaseConfigError =
   !supabaseUrl || !supabasePublishableKey

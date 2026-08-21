@@ -47,9 +47,16 @@ create table if not exists public.profiles (
   email text not null unique,
   role public.app_user_role not null,
   display_name text,
+  active boolean not null default true,
+  deactivated_at timestamptz,
+  deactivated_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists active boolean not null default true;
+alter table public.profiles add column if not exists deactivated_at timestamptz;
+alter table public.profiles add column if not exists deactivated_by uuid references public.profiles(id) on delete set null;
 
 create table if not exists public.engineer_section_permissions (
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -254,8 +261,8 @@ declare
 begin
   next_role := public.profile_role_for_email(new.email);
 
-  insert into public.profiles (id, email, role, display_name)
-  values (new.id, lower(new.email), next_role, public.profile_name_for_email(new.email))
+  insert into public.profiles (id, email, role, display_name, active)
+  values (new.id, lower(new.email), next_role, public.profile_name_for_email(new.email), true)
   on conflict (id) do update
   set email = excluded.email,
       role = excluded.role,
@@ -324,14 +331,17 @@ create trigger set_engineer_work_staffing_metadata
 before insert on public.engineer_work_staffing
 for each row execute function public.set_staffing_metadata();
 
-insert into public.profiles (id, email, role, display_name)
-select id, lower(email), public.profile_role_for_email(email), public.profile_name_for_email(email)
+insert into public.profiles (id, email, role, display_name, active)
+select id, lower(email), public.profile_role_for_email(email), public.profile_name_for_email(email), true
 from auth.users
 where lower(email) in ('popapopzfoods@gmail.com', 'taracv1411@gmail.com')
 on conflict (id) do update
 set email = excluded.email,
     role = excluded.role,
     display_name = excluded.display_name,
+    active = true,
+    deactivated_at = null,
+    deactivated_by = null,
     updated_at = now();
 
 select public.ensure_default_engineer_permissions(id)

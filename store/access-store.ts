@@ -52,6 +52,12 @@ interface AccessState {
   login: (role: UserRole, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshDashboardData: () => Promise<void>;
+  createEngineer: (input: { email: string; displayName: string; password: string }) => Promise<{ temporaryPassword?: string } | null>;
+  updateEngineerProfile: (engineerId: string, input: { displayName: string }) => Promise<void>;
+  setEngineerActive: (engineerId: string, active: boolean) => Promise<void>;
+  resetEngineerPassword: (engineerId: string, password: string) => Promise<{ temporaryPassword?: string } | null>;
+  transferEngineerWork: (engineerId: string, targetEngineerId: string) => Promise<void>;
+  clearEngineerStaffing: (engineerId: string) => Promise<void>;
   setSelectedEngineerId: (engineerId: string) => Promise<void>;
   setEngineerPermission: (sectionId: DashboardSectionId, canView: boolean) => Promise<void>;
   assignWorkItem: (update: { engineerId: string; entityType: AssignmentEntityType; entityId: string }) => Promise<void>;
@@ -93,6 +99,10 @@ function accessErrorMessage(error: unknown) {
         ? String(error.message)
         : "Unable to connect to Supabase.";
 
+  if (/invalid api key|api key/i.test(message)) {
+    return "Invalid Supabase publishable key. In Vercel, set NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to the raw key only, for example sb_publishable_..., with no backslashes, quotes, markdown brackets, or spaces. Redeploy after saving it.";
+  }
+
   if (/relation .*profiles.* does not exist|section_progress|engineer_section_permissions|engineer_work_assignments|engineer_work_staffing|schema cache|PGRST/i.test(message)) {
     return "Supabase database is not ready. Create the Auth users, then run supabase/migrations/20260821_access_progress.sql in the Supabase SQL Editor.";
   }
@@ -115,7 +125,7 @@ async function loadCurrentProfile() {
   if (!user) return null;
 
   const { data, error } = (await withTimeout(
-    supabaseClient.from("profiles").select("id,email,role,display_name").eq("id", user.id).single<ProfileRow>(),
+    supabaseClient.from("profiles").select("id,email,role,display_name,active,deactivated_at").eq("id", user.id).single<ProfileRow>(),
     "Profile lookup"
   )) as SupabaseResponse<ProfileRow>;
 
@@ -123,13 +133,23 @@ async function loadCurrentProfile() {
   if (!data) {
     throw new Error("No profile found for this Supabase user. Run the database migration after creating the Auth user.");
   }
+  if (data.active === false) {
+    await withTimeout(supabaseClient.auth.signOut(), "Supabase sign-out").catch(() => null);
+    throw new Error("This engineer account is inactive. Ask an admin to reactivate it before logging in.");
+  }
   return data;
 }
 
 async function loadEngineers() {
   const supabaseClient = getSupabaseClient();
   const { data, error } = (await withTimeout(
-    supabaseClient.from("profiles").select("id,email,role,display_name").eq("role", "engineer").order("email").returns<ProfileRow[]>(),
+    supabaseClient
+      .from("profiles")
+      .select("id,email,role,display_name,active,deactivated_at")
+      .eq("role", "engineer")
+      .order("active", { ascending: false })
+      .order("email")
+      .returns<ProfileRow[]>(),
     "Engineer profile loading"
   )) as SupabaseResponse<ProfileRow[]>;
 
@@ -179,7 +199,7 @@ async function loadAssignments(session: AuthSession) {
   let query = supabaseClient
     .from("engineer_work_assignments")
     .select(
-      "id,engineer_id,entity_type,entity_id,title,section_id,status,progress_percent,note,assigned_by_email,updated_at,engineer:profiles!engineer_work_assignments_engineer_id_fkey(email,display_name)"
+      "id,engineer_id,entity_type,entity_id,title,section_id,status,progress_percent,note,assigned_by_email,updated_at,engineer:profiles!engineer_work_assignments_engineer_id_fkey(email,display_name,active)"
     )
     .order("updated_at", { ascending: false });
 
@@ -198,7 +218,7 @@ async function loadStaffing(session: AuthSession) {
   let query = supabaseClient
     .from("engineer_work_staffing")
     .select(
-      "id,engineer_id,entity_type,entity_id,title,section_id,role_name,assigned_by_email,created_at,engineer:profiles!engineer_work_staffing_engineer_id_fkey(email,display_name)"
+      "id,engineer_id,entity_type,entity_id,title,section_id,role_name,assigned_by_email,created_at,engineer:profiles!engineer_work_staffing_engineer_id_fkey(email,display_name,active)"
     )
     .order("created_at", { ascending: false });
 
@@ -210,6 +230,36 @@ async function loadStaffing(session: AuthSession) {
 
   if (error) throw error;
   return mapStaffingRows(data || []);
+}
+
+async function callAdminEngineerApi<T>(path: string, init: RequestInit = {}) {
+  const supabaseClient = getSupabaseClient();
+  const {
+    data: { session }
+  } = await withTimeout(supabaseClient.auth.getSession(), "Supabase session lookup");
+
+  if (!session?.access_token) {
+    throw new Error("Admin session is not available. Please log in again.");
+  }
+
+  const response = await withTimeout(
+    fetch(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+        ...(init.headers ?? {})
+      }
+    }),
+    "Admin engineer request"
+  );
+  const payload = (await response.json().catch(() => ({}))) as { error?: string } & T;
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Admin engineer request failed.");
+  }
+
+  return payload;
 }
 
 export const useAccessStore = create<AccessState>((set, get) => ({
@@ -338,6 +388,117 @@ export const useAccessStore = create<AccessState>((set, get) => ({
       staffing
     });
   },
+  createEngineer: async (input) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can add engineers." });
+      return null;
+    }
+
+    try {
+      const payload = await callAdminEngineerApi<{ engineer: EngineerProfile; temporaryPassword: string }>("/api/admin/engineers", {
+        method: "POST",
+        body: JSON.stringify(input)
+      });
+      await get().refreshDashboardData();
+      await get().setSelectedEngineerId(payload.engineer.id);
+      set({ error: null });
+      return { temporaryPassword: payload.temporaryPassword };
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+      return null;
+    }
+  },
+  updateEngineerProfile: async (engineerId, input) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can update engineers." });
+      return;
+    }
+
+    try {
+      await callAdminEngineerApi(`/api/admin/engineers/${engineerId}`, {
+        method: "PATCH",
+        body: JSON.stringify(input)
+      });
+      await get().refreshDashboardData();
+      set({ error: null });
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+    }
+  },
+  setEngineerActive: async (engineerId, active) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can change engineer lifecycle status." });
+      return;
+    }
+
+    try {
+      await callAdminEngineerApi(`/api/admin/engineers/${engineerId}/active`, {
+        method: "PUT",
+        body: JSON.stringify({ active })
+      });
+      await get().refreshDashboardData();
+      set({ error: null });
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+    }
+  },
+  resetEngineerPassword: async (engineerId, password) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can reset engineer passwords." });
+      return null;
+    }
+
+    try {
+      const payload = await callAdminEngineerApi<{ temporaryPassword: string }>(`/api/admin/engineers/${engineerId}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ password })
+      });
+      set({ error: null });
+      return { temporaryPassword: payload.temporaryPassword };
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+      return null;
+    }
+  },
+  transferEngineerWork: async (engineerId, targetEngineerId) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can transfer engineer work." });
+      return;
+    }
+
+    try {
+      await callAdminEngineerApi(`/api/admin/engineers/${engineerId}/transfer`, {
+        method: "POST",
+        body: JSON.stringify({ targetEngineerId })
+      });
+      await get().refreshDashboardData();
+      set({ error: null });
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+    }
+  },
+  clearEngineerStaffing: async (engineerId) => {
+    const session = get().session;
+    if (!session || session.role !== "admin") {
+      set({ error: "Only admin can clear engineer staffing seats." });
+      return;
+    }
+
+    try {
+      await callAdminEngineerApi(`/api/admin/engineers/${engineerId}/staffing`, {
+        method: "DELETE"
+      });
+      await get().refreshDashboardData();
+      set({ error: null });
+    } catch (error) {
+      set({ error: accessErrorMessage(error) });
+    }
+  },
   setSelectedEngineerId: async (engineerId) => {
     const previousPermissions = get().engineerPermissions;
 
@@ -422,6 +583,10 @@ export const useAccessStore = create<AccessState>((set, get) => ({
 
     const previous = get().assignments;
     const engineer = get().engineers.find((item) => item.id === engineerId);
+    if (!engineer?.active) {
+      set({ error: "Inactive engineers cannot receive new work assignments. Reactivate the engineer first." });
+      return;
+    }
     const optimisticAssignment: EngineerWorkAssignment = {
       id: `${entityType}:${entityId}`,
       engineerId,
@@ -533,6 +698,10 @@ export const useAccessStore = create<AccessState>((set, get) => ({
 
     const previous = get().staffing;
     const engineer = get().engineers.find((item) => item.id === engineerId);
+    if (!engineer?.active) {
+      set({ error: "Inactive engineers cannot receive staffing seats. Reactivate the engineer first." });
+      return;
+    }
     const optimisticStaffing: EngineerWorkStaffing = {
       id: `${entityType}:${entityId}:${roleName}:${engineerId}`,
       engineerId,

@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Boxes, Cable, CheckCircle2, Clock3, IndianRupee, Layers3, Search, UsersRound } from "lucide-react";
+import { ArrowLeft, Boxes, Cable, CheckCircle2, Clock3, Cuboid, IndianRupee, Search, UsersRound } from "lucide-react";
 import { componentBuildPlans } from "@/data/popapopz";
+import { ComponentAssemblySection } from "@/components/component-planning/component-assembly-section";
+import { Component3DSection } from "@/components/component-planning/component-3d-section";
 import { EvidenceBadge, PhaseBadge } from "@/components/ui/status-badge";
 import { useAccessStore } from "@/store/access-store";
 import type { EngineerWorkAssignment, EngineerWorkStaffing } from "@/types/access";
@@ -19,8 +21,6 @@ const categoryLabels: Record<ModuleCategory, string> = {
   safety: "Safety"
 };
 
-const assemblyOrder = ["frame", "electrical", "refrigeration", "water", "waste", "prep", "nozzle-tree", "flavor", "boba", "cup", "controller", "sensors-actuators", "software-hmi"];
-
 export function ComponentPlanningPage() {
   const [selectedId, setSelectedId] = useState(componentBuildPlans[0]?.id ?? "");
   const [category, setCategory] = useState<"all" | ModuleCategory>("all");
@@ -34,6 +34,19 @@ export function ComponentPlanningPage() {
   useEffect(() => {
     if (!authChecked) void initialize();
   }, [authChecked, initialize]);
+
+  useEffect(() => {
+    function syncSelectedFromHash() {
+      const hashId = window.location.hash.replace("#component-", "");
+      if (hashId && componentBuildPlans.some((plan) => plan.id === hashId)) {
+        setSelectedId(hashId);
+      }
+    }
+
+    syncSelectedFromHash();
+    window.addEventListener("hashchange", syncSelectedFromHash);
+    return () => window.removeEventListener("hashchange", syncSelectedFromHash);
+  }, []);
 
   const categories = useMemo(() => unique(componentBuildPlans.map((item) => item.category)), []);
   const statuses = useMemo(() => unique(componentBuildPlans.map((item) => item.status)), []);
@@ -124,7 +137,7 @@ export function ComponentPlanningPage() {
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_560px] 2xl:grid-cols-[minmax(0,1fr)_640px]">
           <div className="space-y-4">
-            <AssemblyMap selectedId={selected.id} onSelect={selectPlan} />
+            <ComponentAssemblySection selectedId={selected.id} onSelect={selectPlan} />
             <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
               {filteredPlans.map((plan) => (
                 <ComponentCard
@@ -175,76 +188,6 @@ function SelectFilter({ label, value, onChange, children }: { label: string; val
   );
 }
 
-function AssemblyMap({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
-  const orderedPlans = assemblyOrder.map((id) => componentBuildPlans.find((plan) => plan.id === id)).filter(Boolean) as ComponentBuildPlan[];
-  return (
-    <div className="panel overflow-hidden rounded-lg">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 p-4">
-        <div>
-          <p className="technical-label text-accent">Modular Assembly Map</p>
-          <h2 className="mt-1 text-xl font-semibold">Lego-style build sequence</h2>
-        </div>
-        <div className="inline-flex items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-yellow-100">
-          <Layers3 className="h-4 w-4" />
-          Base first, slide-in modules next
-        </div>
-      </div>
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="relative min-h-[500px] overflow-hidden rounded-md border border-border/80 bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.11),transparent_35%),linear-gradient(180deg,#111827,#0b1120)] p-4">
-          <div className="absolute left-1/2 top-8 h-[340px] w-[190px] -translate-x-1/2 rounded-md border border-slate-500/60 bg-slate-300/8" />
-          <div className="absolute left-1/2 top-10 h-[330px] w-[150px] -translate-x-1/2 rounded-sm border-x-8 border-slate-500/70 border-b-[18px] border-b-slate-500/80" />
-          <div className="relative mx-auto grid h-[450px] max-w-[520px] grid-rows-[64px_70px_96px_86px_78px] gap-3 pt-8">
-            <MapRow plans={orderedPlans.filter((plan) => ["controller", "software-hmi"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
-            <MapRow plans={orderedPlans.filter((plan) => ["cup", "flavor", "boba"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
-            <MapRow plans={orderedPlans.filter((plan) => ["prep", "nozzle-tree"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
-            <MapRow plans={orderedPlans.filter((plan) => ["water", "refrigeration", "electrical"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
-            <MapRow plans={orderedPlans.filter((plan) => ["waste", "sensors-actuators", "frame"].includes(plan.id))} selectedId={selectedId} onSelect={onSelect} />
-          </div>
-        </div>
-        <ol className="grid content-start gap-2">
-          {orderedPlans.map((plan, index) => (
-            <li key={plan.id}>
-              <button
-                className={`flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm transition ${
-                  selectedId === plan.id ? "border-accent/70 bg-accent/10" : "border-border/80 bg-white/[0.03] hover:bg-white/[0.07]"
-                }`}
-                onClick={() => onSelect(plan.id)}
-                type="button"
-              >
-                <span className="technical-label w-6 text-muted">{String(index + 1).padStart(2, "0")}</span>
-                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: plan.color }} />
-                <span className="min-w-0 truncate">{plan.shortName}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </div>
-  );
-}
-
-function MapRow({ plans, selectedId, onSelect }: { plans: ComponentBuildPlan[]; selectedId: string; onSelect: (id: string) => void }) {
-  return (
-    <div className="grid grid-flow-col auto-cols-fr gap-2">
-      {plans.map((plan) => (
-        <button
-          className={`relative min-w-0 rounded-md border px-2 py-2 text-xs font-semibold transition ${
-            selectedId === plan.id ? "scale-[1.03] border-white text-white shadow-[0_0_24px_rgba(34,211,238,0.28)]" : "border-white/15 text-slate-100 hover:border-white/40"
-          }`}
-          key={plan.id}
-          onClick={() => onSelect(plan.id)}
-          style={{ backgroundColor: `${plan.color}33` }}
-          type="button"
-        >
-          <span className="absolute -top-1 left-3 h-2 w-4 rounded-b bg-black/35" />
-          <span className="absolute -top-1 right-3 h-2 w-4 rounded-b bg-black/35" />
-          <span className="block truncate">{plan.shortName}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ComponentCard({
   plan,
   active,
@@ -284,7 +227,10 @@ function ComponentCard({
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span className="truncate">Owner: {assignment?.engineerEmail ?? "Unassigned"}</span>
-        <span>{plan.subComponents?.length ?? 0} parts</span>
+        <span className="inline-flex items-center gap-1">
+          <Cuboid className="h-3.5 w-3.5 text-accent" />
+          3D model · {plan.subComponents?.length ?? 0} parts
+        </span>
       </div>
     </button>
   );
@@ -320,6 +266,7 @@ function ComponentDetail({ plan, assignment, staffing }: { plan: ComponentBuildP
         <MiniMetric label="People" value={`${staffing.length} / ${requiredSeats} assigned`} />
       </div>
       <div className="mt-5 space-y-5">
+        <Component3DSection plan={plan} />
         <OwnerBlock assignment={assignment} />
         <StaffingBlock plan={plan} staffing={staffing} />
         <CostBreakdown plan={plan} />

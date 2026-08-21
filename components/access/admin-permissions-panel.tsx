@@ -40,7 +40,7 @@ export function AdminPermissionsPanel() {
             ) : (
               engineers.map((engineer) => (
                 <option key={engineer.id} value={engineer.id}>
-                  {engineer.displayName} - {engineer.email}
+                  {engineer.displayName} - {engineer.email}{engineer.active ? "" : " (inactive)"}
                 </option>
               ))
             )}
