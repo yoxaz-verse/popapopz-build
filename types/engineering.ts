@@ -26,6 +26,27 @@ export type ModuleCategory =
   | "food-contact"
   | "safety";
 
+export interface CostRangeInr {
+  min: number;
+  max: number;
+}
+
+export interface PeopleRequirement {
+  role: string;
+  count: number;
+}
+
+export interface ComponentPlanning {
+  estimatedCostInr: CostRangeInr;
+  buildDuration: string;
+  peopleNeeded: PeopleRequirement[];
+  assemblyType: string;
+  dependencies: string[];
+  prototypeDeliverable: string;
+  creationSteps: string[];
+  fitmentNotes: string[];
+}
+
 export interface MachineTarget {
   label: string;
   value: string;
@@ -65,7 +86,30 @@ export interface MachineModule {
   cleaning: string[];
   maintenance: string[];
   openDecisions: string[];
+  handlingSequence?: string[];
+  fluidCircuits?: string[];
+  wasteStreams?: string[];
+  validationMetrics?: string[];
+  engineeringRisks?: string[];
+  zone?: string;
+  heightMm?: string;
+  diameterMm?: string;
+  serviceAccess?: string;
+  validationNotes?: string[];
+  planning?: ComponentPlanning;
   color: string;
+}
+
+export interface ComponentBuildPlan extends ComponentPlanning {
+  id: string;
+  name: string;
+  shortName: string;
+  category: ModuleCategory;
+  status: PhaseStatus;
+  evidence: EvidenceStatus;
+  purpose: string;
+  color: string;
+  sourceModuleId?: string;
 }
 
 export interface EngineeringPhase {

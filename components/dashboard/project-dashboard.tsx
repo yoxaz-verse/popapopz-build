@@ -1,11 +1,25 @@
+"use client";
+
 import { decisions, machine, phases } from "@/data/popapopz";
 import { EvidenceBadge, PhaseBadge } from "@/components/ui/status-badge";
 import { AlertTriangle, CheckCircle2, GitBranch, TimerReset } from "lucide-react";
+import { dashboardSections } from "@/lib/access/sections";
+import { useAccessStore } from "@/store/access-store";
 
 export function ProjectDashboard() {
   const openDecisions = decisions.filter((decision) => decision.status === "Open").length;
   const criticalRisks = decisions.filter((decision) => decision.reliabilityImpact === "High" || decision.foodSafetyImpact === "High").length;
-  const overallCompletion = Math.round(phases.reduce((sum, phase) => sum + phase.progress, 0) / phases.length);
+  const session = useAccessStore((state) => state.session);
+  const engineerPermissions = useAccessStore((state) => state.engineerPermissions);
+  const progress = useAccessStore((state) => state.progress);
+  const visibleSectionIds =
+    session?.role === "admin"
+      ? dashboardSections.map((section) => section.id)
+      : dashboardSections.filter((section) => engineerPermissions[section.id]?.canView).map((section) => section.id);
+  const overallCompletion =
+    visibleSectionIds.length > 0
+      ? Math.round(visibleSectionIds.reduce((sum, sectionId) => sum + (progress[sectionId]?.percent ?? 0), 0) / visibleSectionIds.length)
+      : Math.round(phases.reduce((sum, phase) => sum + phase.progress, 0) / phases.length);
   const currentPhase = phases[0];
 
   return (
@@ -22,7 +36,7 @@ export function ProjectDashboard() {
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard icon={GitBranch} label="Current Phase" value={`Phase ${currentPhase.id}`} detail={currentPhase.title} />
-          <MetricCard icon={CheckCircle2} label="Completion" value={`${overallCompletion}%`} detail="Foundation estimate" />
+          <MetricCard icon={CheckCircle2} label="Completion" value={`${overallCompletion}%`} detail="Role-visible progress" />
           <MetricCard icon={AlertTriangle} label="Open Decisions" value={`${openDecisions}`} detail="Require validation" />
           <MetricCard icon={TimerReset} label="Prototype" value="P0" detail="In Development" />
         </div>
