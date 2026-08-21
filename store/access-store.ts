@@ -16,7 +16,7 @@ import {
   type ProgressRow,
   type StaffingRow
 } from "@/lib/access/supabase-mappers";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, supabaseConfigError } from "@/lib/supabase/client";
 import type {
   AuthSession,
   AssignmentEntityType,
@@ -77,6 +77,14 @@ function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = requ
   ]);
 }
 
+function getSupabaseClient() {
+  if (!supabase) {
+    throw new Error(supabaseConfigError ?? "Supabase client is not configured.");
+  }
+
+  return supabase;
+}
+
 function accessErrorMessage(error: unknown) {
   const message =
     error instanceof Error
@@ -97,16 +105,17 @@ function accessErrorMessage(error: unknown) {
 }
 
 async function loadCurrentProfile() {
+  const supabaseClient = getSupabaseClient();
   const {
     data: { user },
     error: userError
-  } = await withTimeout(supabase.auth.getUser(), "Supabase auth check");
+  } = await withTimeout(supabaseClient.auth.getUser(), "Supabase auth check");
 
   if (userError && !/auth session missing/i.test(userError.message)) throw userError;
   if (!user) return null;
 
   const { data, error } = (await withTimeout(
-    supabase.from("profiles").select("id,email,role,display_name").eq("id", user.id).single<ProfileRow>(),
+    supabaseClient.from("profiles").select("id,email,role,display_name").eq("id", user.id).single<ProfileRow>(),
     "Profile lookup"
   )) as SupabaseResponse<ProfileRow>;
 
@@ -118,8 +127,9 @@ async function loadCurrentProfile() {
 }
 
 async function loadEngineers() {
+  const supabaseClient = getSupabaseClient();
   const { data, error } = (await withTimeout(
-    supabase.from("profiles").select("id,email,role,display_name").eq("role", "engineer").order("email").returns<ProfileRow[]>(),
+    supabaseClient.from("profiles").select("id,email,role,display_name").eq("role", "engineer").order("email").returns<ProfileRow[]>(),
     "Engineer profile loading"
   )) as SupabaseResponse<ProfileRow[]>;
 
@@ -128,8 +138,9 @@ async function loadEngineers() {
 }
 
 async function loadPermissionsForUser(userId: string) {
+  const supabaseClient = getSupabaseClient();
   const { data, error } = (await withTimeout(
-    supabase
+    supabaseClient
       .from("engineer_section_permissions")
       .select("section_id,can_view,can_edit_progress")
       .eq("user_id", userId)
@@ -146,8 +157,9 @@ async function loadPermissionsForUser(userId: string) {
 }
 
 async function loadProgress() {
+  const supabaseClient = getSupabaseClient();
   const { data, error } = (await withTimeout(
-    supabase
+    supabaseClient
       .from("section_progress_with_user")
       .select("section_id,percent,status,note,updated_by_email,updated_at")
       .returns<ProgressRow[]>(),
@@ -163,7 +175,8 @@ async function loadProgress() {
 }
 
 async function loadAssignments(session: AuthSession) {
-  let query = supabase
+  const supabaseClient = getSupabaseClient();
+  let query = supabaseClient
     .from("engineer_work_assignments")
     .select(
       "id,engineer_id,entity_type,entity_id,title,section_id,status,progress_percent,note,assigned_by_email,updated_at,engineer:profiles!engineer_work_assignments_engineer_id_fkey(email,display_name)"
@@ -181,7 +194,8 @@ async function loadAssignments(session: AuthSession) {
 }
 
 async function loadStaffing(session: AuthSession) {
-  let query = supabase
+  const supabaseClient = getSupabaseClient();
+  let query = supabaseClient
     .from("engineer_work_staffing")
     .select(
       "id,engineer_id,entity_type,entity_id,title,section_id,role_name,assigned_by_email,created_at,engineer:profiles!engineer_work_staffing_engineer_id_fkey(email,display_name)"
@@ -231,8 +245,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error: signInError } = (await withTimeout(
-        supabase.auth.signInWithPassword({
+        supabaseClient.auth.signInWithPassword({
           email,
           password
         }),
@@ -248,7 +263,7 @@ export const useAccessStore = create<AccessState>((set, get) => ({
       }
 
       if (profile.role !== role) {
-        await withTimeout(supabase.auth.signOut(), "Supabase sign-out");
+        await withTimeout(supabaseClient.auth.signOut(), "Supabase sign-out");
         throw new Error(`This account is registered as ${profile.role}, not ${role}.`);
       }
 
@@ -262,7 +277,10 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     }
   },
   logout: async () => {
-    await withTimeout(supabase.auth.signOut(), "Supabase sign-out").catch(() => null);
+    const supabaseClient = supabase ? getSupabaseClient() : null;
+    if (supabaseClient) {
+      await withTimeout(supabaseClient.auth.signOut(), "Supabase sign-out").catch(() => null);
+    }
     set({
       session: null,
       engineers: [],
@@ -364,8 +382,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase.from("engineer_section_permissions").upsert({
+        supabaseClient.from("engineer_section_permissions").upsert({
           user_id: targetEngineerId,
           section_id: sectionId,
           can_view: canView,
@@ -425,8 +444,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase.from("engineer_work_assignments").upsert(
+        supabaseClient.from("engineer_work_assignments").upsert(
           {
             engineer_id: engineerId,
             entity_type: entityType,
@@ -466,8 +486,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase.from("engineer_work_assignments").delete().eq("entity_type", entityType).eq("entity_id", entityId),
+        supabaseClient.from("engineer_work_assignments").delete().eq("entity_type", entityType).eq("entity_id", entityId),
         "Work assignment removal"
       )) as SupabaseResponse<unknown>;
 
@@ -529,8 +550,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     set({ staffing: [optimisticStaffing, ...previous], error: null });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase.from("engineer_work_staffing").insert({
+        supabaseClient.from("engineer_work_staffing").insert({
           engineer_id: engineerId,
           entity_type: entityType,
           entity_id: entityId,
@@ -565,8 +587,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase.from("engineer_work_staffing").delete().eq("id", staffingId),
+        supabaseClient.from("engineer_work_staffing").delete().eq("id", staffingId),
         "Staffing seat removal"
       )) as SupabaseResponse<unknown>;
 
@@ -596,8 +619,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     set({ assignments: nextAssignments, error: null });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase
+        supabaseClient
           .from("engineer_work_assignments")
           .update({
             progress_percent: Math.min(100, Math.max(0, Math.round(update.progressPercent))),
@@ -638,8 +662,9 @@ export const useAccessStore = create<AccessState>((set, get) => ({
     });
 
     try {
+      const supabaseClient = getSupabaseClient();
       const { error } = (await withTimeout(
-        supabase
+        supabaseClient
           .from("section_progress")
           .update({
             percent: nextProgress.percent,
